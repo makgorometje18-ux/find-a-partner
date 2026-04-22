@@ -332,6 +332,7 @@ export default function PartnerScenePage() {
   const [activeMatchId, setActiveMatchId] = useState("");
   const [chatDraft, setChatDraft] = useState("");
   const [isLightMode, setIsLightMode] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [safetySettings, setSafetySettings] = useState<PartnerSafetySettings>(defaultSafetySettings);
   const [userControls, setUserControls] = useState<Record<string, PartnerUserControls>>({});
   const [matchCelebrationProfile, setMatchCelebrationProfile] = useState<DatingProfile | null>(null);
@@ -391,6 +392,19 @@ export default function PartnerScenePage() {
 
       return next;
     });
+  };
+
+  const logout = async () => {
+    setSaving(true);
+    const { error: signOutError } = await supabase.auth.signOut();
+    setSaving(false);
+
+    if (signOutError) {
+      setStatus(`Could not log out: ${signOutError.message}`);
+      return;
+    }
+
+    window.location.href = "/auth";
   };
 
   const saveBlockControl = async (userId: string, blocked: boolean) => {
@@ -1981,9 +1995,28 @@ export default function PartnerScenePage() {
             </div>
             <p className="mt-5 text-sm uppercase tracking-[0.3em] text-white/50">Profile</p>
             <h2 className="mt-2 text-3xl font-bold">Your dating profile</h2>
-            <SafetySettingsPanel settings={safetySettings} onChange={updateSafetySettings} />
             <OwnProfileCard profile={profileMap[player?.id || ""]} fallbackName={player?.name || "Player"} fallbackAge={player?.age || 18} fallbackCountry={player?.country || "Unknown"} />
-            <button onClick={() => { window.location.href = "/setup"; }} className="mt-5 w-full rounded-full bg-white px-5 py-4 font-semibold text-stone-950">Edit Profile</button>
+            <div className="mt-5 grid gap-3">
+              <button onClick={() => { window.location.href = "/setup"; }} className="w-full rounded-full bg-white px-5 py-4 font-semibold text-stone-950">Edit Profile</button>
+              <button onClick={() => void logout()} disabled={saving} className="w-full rounded-full border border-rose-300/30 bg-rose-500/10 px-5 py-4 font-semibold text-rose-100 disabled:opacity-60">
+                Logout
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProfileSettings((current) => !current)}
+              className="mt-5 flex w-full items-center justify-between gap-3 rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-4 text-left"
+              aria-expanded={showProfileSettings}
+            >
+              <span>
+                <span className="block text-sm uppercase tracking-[0.28em] text-white/45">Settings</span>
+                <span className="mt-1 block text-base font-black text-white">Safety & attention</span>
+              </span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-xl text-white">
+                {showProfileSettings ? "-" : "+"}
+              </span>
+            </button>
+            {showProfileSettings ? <SafetySettingsPanel settings={safetySettings} onChange={updateSafetySettings} /> : null}
           </section>
         ) : null}
       </div>
