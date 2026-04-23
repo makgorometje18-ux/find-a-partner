@@ -25,6 +25,10 @@ create table if not exists public.dating_profiles (
   selfie_url text,
   face_match_score double precision,
   is_active boolean not null default true,
+  official_partner_id uuid references public.players(id) on delete set null,
+  official_partner_name text,
+  official_since timestamptz,
+  partnership_visible boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -46,6 +50,10 @@ alter table public.dating_profiles add column if not exists is_photo_verified bo
 alter table public.dating_profiles add column if not exists selfie_url text;
 alter table public.dating_profiles add column if not exists face_match_score double precision;
 alter table public.dating_profiles add column if not exists is_active boolean not null default true;
+alter table public.dating_profiles add column if not exists official_partner_id uuid references public.players(id) on delete set null;
+alter table public.dating_profiles add column if not exists official_partner_name text;
+alter table public.dating_profiles add column if not exists official_since timestamptz;
+alter table public.dating_profiles add column if not exists partnership_visible boolean not null default false;
 
 create table if not exists public.dating_likes (
   id uuid primary key default gen_random_uuid(),

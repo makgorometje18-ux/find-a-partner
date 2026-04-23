@@ -54,6 +54,10 @@ type DatingProfile = {
   selfie_url: string | null;
   is_active: boolean;
   onboarding_complete: boolean;
+  official_partner_id?: string | null;
+  official_partner_name?: string | null;
+  official_since?: string | null;
+  partnership_visible?: boolean | null;
 };
 
 type MatchRow = {
@@ -100,6 +104,11 @@ type PartnerUserControls = {
   blockedBy?: boolean;
   reported?: boolean;
   reportNote?: string;
+  favourite?: boolean;
+  listed?: boolean;
+  disappearingMessages?: boolean;
+  chatClearedAt?: string;
+  deletedChat?: boolean;
 };
 type CallState = {
   status: CallStatus;
@@ -121,8 +130,6 @@ const baseProgress: Progress = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const srdGrantAmount = 370;
-const moneyLabelFor = (amount: number) => (amount <= srdGrantAmount ? "SASSA SRD Grant" : "Wallet Balance");
 const schemaHelp = "Dating tables are missing or outdated. Run the latest SQL in supabase/dating_schema.sql, then try again.";
 const sortPair = (first: string, second: string) => (first < second ? [first, second] : [second, first]);
 const goalPalette = ["from-rose-500/80 to-orange-400/80", "from-fuchsia-700/80 to-purple-500/80", "from-amber-400/80 to-yellow-500/80"];
@@ -150,7 +157,19 @@ const chatLocationPrefix = "[chat-location]";
 const chatDatePlanPrefix = "[chat-date-plan]";
 const chatReplyPrefix = "[chat-reply]";
 const chatEmojis = ["😀", "😂", "😍", "😘", "🥰", "😎", "😢", "😡", "🔥", "❤️", "👍", "🙏", "🎉", "💯", "👀", "✨"];
-const rtcConfig: RTCConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const turnUrls = (process.env.NEXT_PUBLIC_TURN_URLS || process.env.NEXT_PUBLIC_TURN_URL || "")
+  .split(",")
+  .map((url) => url.trim())
+  .filter(Boolean);
+const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || "";
+const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "";
+const rtcConfig: RTCConfiguration = {
+  iceServers: [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+    ...(turnUrls.length && turnUsername && turnCredential ? [{ urls: turnUrls, username: turnUsername, credential: turnCredential }] : []),
+  ],
+  iceCandidatePoolSize: 8,
+};
 const voiceAudioConstraints: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 const isProfileVerified = (profile?: Pick<DatingProfile, "contact_verified" | "profile_verified" | "is_photo_verified" | "selfie_url">) =>
   Boolean(profile?.contact_verified || profile?.profile_verified || (profile?.is_photo_verified && profile.selfie_url));
@@ -271,6 +290,20 @@ const formatLastSeen = (value?: string | null) => {
   })}`;
 };
 
+const presenceFromRow = (
+  row: { is_online?: boolean | null; updated_at?: string | null },
+  current?: PlayerPresence
+): PlayerPresence => {
+  const isOnline = Boolean(row.is_online);
+  return {
+    is_online: isOnline,
+    last_seen_at: isOnline ? current?.last_seen_at || row.updated_at || null : row.updated_at || current?.last_seen_at || new Date().toISOString(),
+  };
+};
+
+const officialPartnerLabel = (profile?: Pick<DatingProfile, "official_partner_name" | "partnership_visible"> | null) =>
+  profile?.partnership_visible && profile.official_partner_name ? `Taken by ${profile.official_partner_name}` : "";
+
 const formatChatDivider = (value?: string | null) => {
   const date = value ? new Date(value) : new Date();
   const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
@@ -345,16 +378,13 @@ export default function PartnerScenePage() {
   const lastTypingSentRef = useRef("");
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const callChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const callChannelsRef = useRef<Record<string, ReturnType<typeof supabase.channel>>>({});
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneIntervalRef = useRef<number | null>(null);
-  const playerMoney = player?.money ?? 0;
-  const moneyLabel = moneyLabelFor(playerMoney);
-
   const broadcastTypingState = (isTyping: boolean, force = false) => {
     if (!player || !activeMatchId || !typingChannelRef.current) return;
 
@@ -574,7 +604,7 @@ export default function PartnerScenePage() {
 
         nextPresenceMap = ((presenceRows || []) as Array<{ id: string; is_online: boolean | null; updated_at: string | null }>).reduce<Record<string, PlayerPresence>>(
           (accumulator, row) => {
-            accumulator[row.id] = { is_online: Boolean(row.is_online), last_seen_at: row.updated_at || new Date().toISOString() };
+            accumulator[row.id] = presenceFromRow(row);
             return accumulator;
           },
           {}
@@ -674,10 +704,10 @@ export default function PartnerScenePage() {
   }, [player]);
 
   useEffect(() => {
-    if (!player || safetySettings.hideOnlineStatus) return;
+    if (!player) return;
 
     const markOnline = () => {
-      setPresenceMap((current) => ({ ...current, [player.id]: { is_online: true, last_seen_at: new Date().toISOString() } }));
+      setPresenceMap((current) => ({ ...current, [player.id]: { is_online: true, last_seen_at: current[player.id]?.last_seen_at || null } }));
       void supabase.from("players").update({ is_online: true, updated_at: new Date().toISOString() }).eq("id", player.id);
     };
     const markOffline = () => {
@@ -767,11 +797,7 @@ export default function PartnerScenePage() {
           ...current,
           ...((presenceRows || []) as Array<{ id: string; is_online: boolean | null; updated_at: string | null }>).reduce<Record<string, PlayerPresence>>(
             (accumulator, row) => {
-              const isOnline = Boolean(row.is_online);
-              accumulator[row.id] = {
-                is_online: isOnline,
-                last_seen_at: row.updated_at || current[row.id]?.last_seen_at || new Date().toISOString(),
-              };
+              accumulator[row.id] = presenceFromRow(row, current[row.id]);
               return accumulator;
             },
             {}
@@ -803,10 +829,7 @@ export default function PartnerScenePage() {
         if (!row.id || !presenceIds.includes(row.id)) return;
         setPresenceMap((current) => ({
           ...current,
-          [row.id as string]: {
-            is_online: Boolean(row.is_online),
-            last_seen_at: row.updated_at || current[row.id as string]?.last_seen_at || new Date().toISOString(),
-          },
+          [row.id as string]: presenceFromRow(row, current[row.id as string]),
         }));
       })
       .subscribe();
@@ -838,9 +861,10 @@ export default function PartnerScenePage() {
         const next = { ...current };
         presenceIds.forEach((id) => {
           const isOnline = onlineIds.has(id);
+          const wasOnline = Boolean(next[id]?.is_online);
           next[id] = {
             is_online: isOnline,
-            last_seen_at: isOnline ? new Date().toISOString() : next[id]?.last_seen_at || new Date().toISOString(),
+            last_seen_at: isOnline ? next[id]?.last_seen_at || null : wasOnline ? new Date().toISOString() : next[id]?.last_seen_at || null,
           };
         });
         return next;
@@ -1136,7 +1160,9 @@ export default function PartnerScenePage() {
   };
 
   const sendCallSignal = (payload: Record<string, unknown>) => {
-    void callChannelRef.current?.send({
+    const matchId = typeof payload.match_id === "string" ? payload.match_id : "";
+    const channel = matchId ? callChannelsRef.current[matchId] : null;
+    void channel?.send({
       type: "broadcast",
       event: "call",
       payload,
@@ -1195,6 +1221,10 @@ export default function PartnerScenePage() {
           ? `Unblock ${activeMatchProfile.display_name} before starting a call.`
           : `You cannot call ${activeMatchProfile.display_name} right now.`
       );
+      return;
+    }
+    if (!callChannelsRef.current[activeMatch.id]) {
+      setError("Call service is still connecting. Wait a moment and try again.");
       return;
     }
 
@@ -1293,12 +1323,14 @@ export default function PartnerScenePage() {
   }, []);
 
   useEffect(() => {
-    if (!player || !activeMatch) return;
+    if (!player || !matches.length) return;
 
-    const peerId = activeMatch.user_a === player.id ? activeMatch.user_b : activeMatch.user_a;
-    const channel = supabase
-      .channel(`dating-call-${activeMatch.id}`)
-      .on("broadcast", { event: "call" }, async ({ payload }) => {
+    const nextChannels: Record<string, ReturnType<typeof supabase.channel>> = {};
+    matches.forEach((match) => {
+      const peerId = match.user_a === player.id ? match.user_b : match.user_a;
+      const channel = supabase
+        .channel(`dating-call-${match.id}`)
+        .on("broadcast", { event: "call" }, async ({ payload }) => {
         const callPayload = payload as {
           type?: string;
           match_id?: string;
@@ -1310,16 +1342,19 @@ export default function PartnerScenePage() {
           candidate?: RTCIceCandidateInit;
         };
 
-        if (callPayload.match_id !== activeMatch.id || callPayload.from === player.id || callPayload.to !== player.id) return;
+        if (callPayload.match_id !== match.id || callPayload.from === player.id || callPayload.to !== player.id) return;
 
         if (callPayload.type === "offer" && callPayload.sdp && callPayload.kind) {
+          const peerProfile = profileMap[callPayload.from || peerId];
           pendingOfferRef.current = callPayload.sdp;
+          setActiveMatchId(match.id);
+          setActiveTab("chat");
           setCallState({
             status: "incoming",
             kind: callPayload.kind,
-            matchId: activeMatch.id,
+            matchId: match.id,
             peerId: callPayload.from || peerId,
-            peerName: callPayload.peer_name || activeMatchProfile?.display_name || "Your match",
+            peerName: callPayload.peer_name || peerProfile?.display_name || "Your match",
           });
           return;
         }
@@ -1345,13 +1380,18 @@ export default function PartnerScenePage() {
       })
       .subscribe();
 
-    callChannelRef.current = channel;
+      nextChannels[match.id] = channel;
+    });
+
+    callChannelsRef.current = nextChannels;
 
     return () => {
-      callChannelRef.current = null;
-      void supabase.removeChannel(channel);
+      callChannelsRef.current = {};
+      Object.values(nextChannels).forEach((channel) => {
+        void supabase.removeChannel(channel);
+      });
     };
-  }, [activeMatch, activeMatchProfile?.display_name, player]);
+  }, [matches, player, profileMap]);
 
   const goalCards = useMemo(() => {
     const counts = profiles.reduce<Record<string, number>>((accumulator, profile) => {
@@ -1767,29 +1807,71 @@ export default function PartnerScenePage() {
 
   const makeItOfficial = async () => {
     if (!player || !activeMatchProfile || saving) return;
+    if (activeMatchProfile.official_partner_id && activeMatchProfile.official_partner_id !== player.id) {
+      setError(`${activeMatchProfile.display_name} is already marked as taken by ${activeMatchProfile.official_partner_name || "someone else"}.`);
+      return;
+    }
     setSaving(true);
     setError("");
 
     try {
+      const ownProfile = profileMap[player.id];
       const nextProgress = { ...progress, spouse: activeMatchProfile.display_name };
+      const officialSince = new Date().toISOString();
       window.localStorage.setItem(`partner-progress:${player.id}`, JSON.stringify(nextProgress));
       window.sessionStorage.setItem(
         `partner-flash:${player.id}`,
         `You and ${activeMatchProfile.display_name} made it official.`
       );
 
-      const { error: updateError } = await supabase
-        .from("players")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", player.id);
+      const { error: ownProfileError } = await supabase
+        .from("dating_profiles")
+        .update({
+          official_partner_id: activeMatchProfile.user_id,
+          official_partner_name: activeMatchProfile.display_name,
+          official_since: officialSince,
+          partnership_visible: true,
+          updated_at: officialSince,
+        })
+        .eq("user_id", player.id);
 
-      if (updateError) {
-        setError(updateError.message);
+      const { error: partnerProfileError } = await supabase
+        .from("dating_profiles")
+        .update({
+          official_partner_id: player.id,
+          official_partner_name: ownProfile?.display_name || player.name || "Your partner",
+          official_since: officialSince,
+          partnership_visible: true,
+          updated_at: officialSince,
+        })
+        .eq("user_id", activeMatchProfile.user_id);
+
+      if (ownProfileError || partnerProfileError) {
+        setError(ownProfileError?.message || partnerProfileError?.message || schemaHelp);
         setSaving(false);
         return;
       }
 
       setProgress(nextProgress);
+      setProfileMap((current) => ({
+        ...current,
+        [player.id]: current[player.id]
+          ? {
+              ...current[player.id],
+              official_partner_id: activeMatchProfile.user_id,
+              official_partner_name: activeMatchProfile.display_name,
+              official_since: officialSince,
+              partnership_visible: true,
+            }
+          : current[player.id],
+        [activeMatchProfile.user_id]: {
+          ...activeMatchProfile,
+          official_partner_id: player.id,
+          official_partner_name: ownProfile?.display_name || player.name || "Your partner",
+          official_since: officialSince,
+          partnership_visible: true,
+        },
+      }));
       setStatus(`You and ${activeMatchProfile.display_name} are official now.`);
       setSaving(false);
     } catch (updateError) {
@@ -1937,6 +2019,14 @@ export default function PartnerScenePage() {
                 onVoiceSend={(blob) => void sendVoiceNote(blob)}
                 onStartCall={(kind) => void startCall(kind)}
                 onToggleMute={() => updateUserControls(activeMatchProfile.user_id, { muted: !activeMatchControls.muted })}
+                onToggleFavourite={() => updateUserControls(activeMatchProfile.user_id, { favourite: !activeMatchControls.favourite })}
+                onToggleListed={() => updateUserControls(activeMatchProfile.user_id, { listed: !activeMatchControls.listed })}
+                onToggleDisappearing={() => updateUserControls(activeMatchProfile.user_id, { disappearingMessages: !activeMatchControls.disappearingMessages })}
+                onClearChat={() => updateUserControls(activeMatchProfile.user_id, { chatClearedAt: new Date().toISOString(), deletedChat: false })}
+                onDeleteChat={() => {
+                  updateUserControls(activeMatchProfile.user_id, { deletedChat: true, chatClearedAt: new Date().toISOString() });
+                  setActiveMatchId("");
+                }}
                 onBlock={() => {
                   void saveBlockControl(activeMatchProfile.user_id, !activeMatchControls.blocked);
                 }}
@@ -1948,7 +2038,10 @@ export default function PartnerScenePage() {
               />
             ) : chatMatches.length ? (
               <div className="mt-5 space-y-3">
-                {chatMatches.map((match) => {
+                {chatMatches.filter((match) => {
+                  const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
+                  return !userControls[partnerId]?.deletedChat;
+                }).map((match) => {
                   const profile = profileMap[match.user_a === player?.id ? match.user_b : match.user_a];
                   const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
                   return (
@@ -1977,19 +2070,19 @@ export default function PartnerScenePage() {
 
         {activeTab === "profile" ? (
           <section className="rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur">
-            <div className="rounded-[1.7rem] border border-white/10 bg-white/5 p-4">
+            <div className="rounded-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.92),rgba(2,6,23,0.72))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
               <div className="flex items-center gap-3">
                 <GameLogo className="h-12 w-12" />
                 <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-white/50">Partner Finder</p>
-                  <h1 className="text-4xl font-black tracking-tight">Real Matches</h1>
+                  <p className="text-sm uppercase tracking-[0.35em] text-sky-200/60">Partner Finder</p>
+                  <h1 className="text-4xl font-black tracking-tight">Relationship Profile</h1>
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-2 text-xs text-white/80">
                 <span className="rounded-full bg-white/10 px-3 py-2">Age {player?.age ?? 18}</span>
-                <span className="rounded-full bg-white/10 px-3 py-2">{moneyLabel} R{playerMoney}</span>
-                <span className="rounded-full bg-white/10 px-3 py-2">Happiness {player?.happiness ?? 0}</span>
+                <span className="rounded-full bg-white/10 px-3 py-2">{isProfileVerified(profileMap[player?.id || ""]) ? "Verified profile" : "Verification pending"}</span>
                 <span className="rounded-full bg-white/10 px-3 py-2">{visibleMatches.length} Match{visibleMatches.length === 1 ? "" : "es"}</span>
+                {officialPartnerLabel(profileMap[player?.id || ""]) ? <span className="rounded-full bg-emerald-400/15 px-3 py-2 text-emerald-100">{officialPartnerLabel(profileMap[player?.id || ""])}</span> : null}
               </div>
               <p className="mt-4 text-sm leading-7 text-white/70">{status}</p>
             </div>
@@ -2235,7 +2328,8 @@ function DefaultExploreEmpty() {
 }
 
 function ExploreRow({ profile, distanceLabel }: { profile: DatingProfile; distanceLabel: string | null }) {
-  return <div className="flex gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3"><div className="h-24 w-20 overflow-hidden rounded-2xl bg-white/10">{profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="truncate text-xl font-bold">{profile.display_name}, {profile.age}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}</div><p className="mt-1 text-sm text-white/65">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p><p className="mt-2 line-clamp-2 text-sm text-white/75">{profile.relationship_goal || "Still figuring it out"}</p></div></div>;
+  const partnerLabel = officialPartnerLabel(profile);
+  return <div className="flex gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3"><div className="h-24 w-20 overflow-hidden rounded-2xl bg-white/10">{profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="truncate text-xl font-bold">{profile.display_name}, {profile.age}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}{partnerLabel ? <span className="rounded-full bg-emerald-400/15 px-2 py-1 text-[10px] font-bold text-emerald-100">Taken</span> : null}</div><p className="mt-1 text-sm text-white/65">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p><p className="mt-2 line-clamp-2 text-sm text-white/75">{partnerLabel || profile.relationship_goal || "Still figuring it out"}</p></div></div>;
 }
 
 function StatBox({ label, value }: { label: string; value: number }) {
@@ -2324,7 +2418,8 @@ function SafetyToggle({
 
 function MatchRowButton({ profile, distanceLabel, onOpen }: { match: MatchRow; playerId: string; profile?: DatingProfile; distanceLabel: string | null; onOpen: () => void }) {
   if (!profile) return null;
-  return <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3 text-left"><div className="h-20 w-16 overflow-hidden rounded-2xl bg-white/10">{profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}</div><div className="flex-1"><div className="flex items-center gap-2"><h3 className="text-lg font-bold">{profile.display_name}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}</div><p className="mt-1 text-sm text-white/65">{distanceLabel || profile.location_label || profile.city}</p><p className="mt-1 text-sm text-white/65">{profile.relationship_goal || "Still figuring it out"}</p></div></button>;
+  const partnerLabel = officialPartnerLabel(profile);
+  return <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3 text-left"><div className="h-20 w-16 overflow-hidden rounded-2xl bg-white/10">{profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}</div><div className="flex-1"><div className="flex items-center gap-2"><h3 className="text-lg font-bold">{profile.display_name}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}{partnerLabel ? <span className="rounded-full bg-emerald-400/15 px-2 py-1 text-[10px] font-bold text-emerald-100">Taken</span> : null}</div><p className="mt-1 text-sm text-white/65">{distanceLabel || profile.location_label || profile.city}</p><p className="mt-1 text-sm text-white/65">{partnerLabel || profile.relationship_goal || "Still figuring it out"}</p></div></button>;
 }
 
 function ChatListButton({
@@ -2348,6 +2443,7 @@ function ChatListButton({
   if (!profile) return null;
   const isOnline = Boolean(presence?.is_online);
   const presenceLabel = isOnline ? "Online" : formatLastSeen(presence?.last_seen_at);
+  const partnerLabel = officialPartnerLabel(profile);
 
   return (
     <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10">
@@ -2359,9 +2455,10 @@ function ChatListButton({
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-xl font-black">{profile.display_name}, {profile.age}</h3>
           {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}
+          {partnerLabel ? <span className="shrink-0 rounded-full bg-emerald-400/15 px-2 py-1 text-[10px] font-bold text-emerald-100">Taken</span> : null}
         </div>
         <p className="mt-1 text-sm text-white/65">
-          {blocked ? "Blocked - tap to unblock" : blockedBy ? "Messaging unavailable" : `${presenceLabel} - ${distanceLabel || profile.location_label || profile.city}`}
+          {blocked ? "Blocked - tap to unblock" : blockedBy ? "Messaging unavailable" : `${presenceLabel} - ${partnerLabel || distanceLabel || profile.location_label || profile.city}`}
         </p>
       </div>
       {blocked || blockedBy ? (
@@ -2401,6 +2498,15 @@ function ThumbIcon({ className = "h-6 w-6" }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M2 10.5C2 9.7 2.7 9 3.5 9H6v12H3.5C2.7 21 2 20.3 2 19.5v-9zM8 21V8.7l4.6-5.1c.8-.9 2.4-.4 2.4.9V9h4.7c1.5 0 2.6 1.4 2.2 2.8l-1.8 6.8c-.4 1.4-1.6 2.4-3.1 2.4H8z" /></svg>;
 }
 
+function ReplyQuote({ reply, own }: { reply: ChatReplyReference; own: boolean }) {
+  return (
+    <div className={`mb-2 rounded-xl border-l-4 px-3 py-2 text-left text-xs leading-5 ${own ? "border-emerald-300 bg-white/22" : "border-sky-300 bg-white/10"}`}>
+      <span className={`block font-black ${own ? "text-emerald-100" : "text-sky-200"}`}>{reply.senderName}</span>
+      <span className="line-clamp-2 opacity-80">{reply.preview}</span>
+    </div>
+  );
+}
+
 function ChatPanel({
   activeMatchProfile,
   activeMessages,
@@ -2422,6 +2528,11 @@ function ChatPanel({
   onVoiceSend,
   onStartCall,
   onToggleMute,
+  onToggleFavourite,
+  onToggleListed,
+  onToggleDisappearing,
+  onClearChat,
+  onDeleteChat,
   onBlock,
   onReport,
 }: {
@@ -2445,6 +2556,11 @@ function ChatPanel({
   onVoiceSend: (blob: Blob) => void;
   onStartCall: (kind: "voice" | "video") => void;
   onToggleMute: () => void;
+  onToggleFavourite: () => void;
+  onToggleListed: () => void;
+  onToggleDisappearing: () => void;
+  onClearChat: () => void;
+  onDeleteChat: () => void;
   onBlock: () => void;
   onReport: () => void;
 }) {
@@ -2452,6 +2568,7 @@ function ChatPanel({
   const isBlocked = Boolean(userControls.blocked);
   const isBlockedBy = Boolean(userControls.blockedBy);
   const communicationBlocked = isBlocked || isBlockedBy;
+  const partnerLabel = officialPartnerLabel(activeMatchProfile);
   const presenceLabel = isTyping ? "Typing..." : isOnline ? "Online" : formatLastSeen(presence?.last_seen_at);
   const dividerLabel = formatChatDivider(activeMessages[0]?.created_at);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -2465,6 +2582,7 @@ function ChatPanel({
   const [forceSearchOpen, setForceSearchOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [menuNotice, setMenuNotice] = useState("");
+  const [deletedMessageIds, setDeletedMessageIds] = useState<string[]>([]);
   const [voiceRecorderState, setVoiceRecorderState] = useState<"idle" | "recording" | "paused" | "preview">("idle");
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const [voicePreviewBlob, setVoicePreviewBlob] = useState<Blob | null>(null);
@@ -2493,12 +2611,17 @@ function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const latestMessageKey = activeMessages.map((message) => `${message.id}:${message.read_at || ""}`).join("|");
   const normalizedSearch = messageSearch.trim().toLowerCase();
+  const clearedAtMs = userControls.chatClearedAt ? new Date(userControls.chatClearedAt).getTime() : 0;
+  const visibleMessages = clearedAtMs
+    ? activeMessages.filter((message) => new Date(message.created_at).getTime() > clearedAtMs)
+    : activeMessages;
+  const availableMessages = visibleMessages.filter((message) => !deletedMessageIds.includes(message.id));
   const shownMessages = normalizedSearch
-    ? activeMessages.filter((message) => {
+    ? availableMessages.filter((message) => {
         const text = chatMessageText(message.body);
         return !isChatImageMessage(text) && !isChatAudioMessage(text) && text.toLowerCase().includes(normalizedSearch);
       })
-    : activeMessages;
+    : availableMessages;
   const draftWarning = safetySettings.scamWarnings ? riskyMessageWarning(chatDraft) : "";
   const composerRows = Math.min(
     6,
@@ -2900,75 +3023,75 @@ function ChatPanel({
         </div>
 
         {showConversationMenu ? (
-          <div className="absolute right-3 top-16 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200/80 bg-white py-2 text-sm font-medium text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.34)]">
-            <button type="button" onClick={() => { setShowConversationMenu(false); onStartCall("voice"); }} disabled={communicationBlocked} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100 disabled:opacity-45">
+          <div className="absolute right-3 top-16 z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#101827] py-2 text-sm font-medium text-white shadow-[0_22px_70px_rgba(0,0,0,0.5)]">
+            <button type="button" onClick={() => { setShowConversationMenu(false); onStartCall("voice"); }} disabled={communicationBlocked} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10 disabled:opacity-45">
               <PhoneIcon className="h-4 w-4" />
               <span>Call</span>
             </button>
-            <button type="button" onClick={() => closeMenuWithNotice(`${activeMatchProfile.display_name}, ${activeMatchProfile.age} - ${distanceLabel || activeMatchProfile.location_label || activeMatchProfile.city}`)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => closeMenuWithNotice(`${activeMatchProfile.display_name}, ${activeMatchProfile.age} - ${distanceLabel || activeMatchProfile.location_label || activeMatchProfile.city}. ${officialPartnerLabel(activeMatchProfile) || activeMatchProfile.relationship_goal || "Available to connect."}`)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">i</span>
               <span>Contact info</span>
             </button>
-            <button type="button" onClick={() => setForceSearchOpen((current) => !current)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => safetySettings.chatSearch ? setForceSearchOpen((current) => !current) : closeMenuWithNotice("Chat search is turned off in profile settings.")} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">⌕</span>
               <span>{forceSearchOpen ? "Hide search" : "Search"}</span>
             </button>
-            {forceSearchOpen ? (
+            {forceSearchOpen && safetySettings.chatSearch ? (
               <div className="px-3 pb-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
                   <input
                     value={messageSearch}
                     onChange={(event) => setMessageSearch(event.target.value)}
                     autoFocus
                     placeholder="Search messages"
-                    className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                    className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/45"
                   />
                 </div>
                 {messageSearch ? (
-                  <button type="button" onClick={() => setMessageSearch("")} className="mt-2 text-xs font-bold text-slate-500 hover:text-slate-800">
+                  <button type="button" onClick={() => setMessageSearch("")} className="mt-2 text-xs font-bold text-white/55 hover:text-white">
                     Clear search
                   </button>
                 ) : null}
               </div>
             ) : null}
-            <button type="button" onClick={() => { setSelectionMode((current) => !current); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { setSelectionMode((current) => !current); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">☑</span>
               <span>{selectionMode ? "Cancel selection" : "Select messages"}</span>
             </button>
-            <button type="button" onClick={() => { onToggleMute(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { onToggleMute(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">⌁</span>
               <span>{userControls.muted ? "Unmute notifications" : "Mute notifications"}</span>
             </button>
-            <button type="button" onClick={() => closeMenuWithNotice("Disappearing messages will be added soon.")} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { onToggleDisappearing(); closeMenuWithNotice(userControls.disappearingMessages ? "Disappearing messages off." : "Disappearing messages on for this chat."); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">◌</span>
-              <span>Disappearing messages</span>
+              <span>{userControls.disappearingMessages ? "Turn off disappearing" : "Disappearing messages"}</span>
             </button>
-            <button type="button" onClick={() => closeMenuWithNotice(`${activeMatchProfile.display_name} added to favourites.`)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { onToggleFavourite(); closeMenuWithNotice(userControls.favourite ? `${activeMatchProfile.display_name} removed from favourites.` : `${activeMatchProfile.display_name} added to favourites.`); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">♡</span>
-              <span>Add to favourites</span>
+              <span>{userControls.favourite ? "Remove favourite" : "Add to favourites"}</span>
             </button>
-            <button type="button" onClick={() => closeMenuWithNotice(`${activeMatchProfile.display_name} added to your list.`)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { onToggleListed(); closeMenuWithNotice(userControls.listed ? `${activeMatchProfile.display_name} removed from your list.` : `${activeMatchProfile.display_name} added to your list.`); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">▣</span>
-              <span>Add to list</span>
+              <span>{userControls.listed ? "Remove from list" : "Add to list"}</span>
             </button>
-            <button type="button" onClick={() => { setShowConversationMenu(false); onBack(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { setShowConversationMenu(false); onBack(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">×</span>
               <span>Close chat</span>
             </button>
-            <div className="my-1 border-t border-slate-200"></div>
-            <button type="button" onClick={() => { onReport(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <div className="my-1 border-t border-white/10"></div>
+            <button type="button" onClick={() => { onReport(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">!</span>
               <span>{userControls.reported ? "Reported" : "Report"}</span>
             </button>
-            <button type="button" onClick={() => { onBlock(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-rose-700 hover:bg-rose-50">
+            <button type="button" onClick={() => { onBlock(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-rose-200 hover:bg-rose-500/10">
               <span className="w-4 text-center">⊘</span>
               <span>{isBlocked ? "Unblock" : "Block"}</span>
             </button>
-            <button type="button" onClick={() => { setMessageSearch(""); closeMenuWithNotice("Search text cleared. Messages stay saved."); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { setMessageSearch(""); onClearChat(); closeMenuWithNotice("Chat cleared on this device. New messages will still arrive."); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">−</span>
               <span>Clear chat</span>
             </button>
-            <button type="button" onClick={() => closeMenuWithNotice("Deleting chats permanently needs a database delete policy. I kept the chat safe for now.")} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100">
+            <button type="button" onClick={() => { onDeleteChat(); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">⌧</span>
               <span>Delete chat</span>
             </button>
@@ -3025,12 +3148,6 @@ function ChatPanel({
                     onDoubleClick={() => openMessageActions(message.id)}
                   >
                   <div className={`${isOwnMessage ? "items-end" : "items-start"} flex min-w-0 flex-col`}>
-                  {reply ? (
-                    <div className={`mb-1 max-w-full rounded-2xl border-l-4 px-3 py-2 text-left text-xs leading-5 ${isOwnMessage ? "border-emerald-300 bg-blue-500/28 text-white/82" : "border-sky-300 bg-white/8 text-white/76"}`}>
-                      <span className="block font-black text-sky-200">{reply.senderName}</span>
-                      <span className="line-clamp-2">{reply.preview}</span>
-                    </div>
-                  ) : null}
                   {isChatImageMessage(messageBody) ? (
                     <button
                       type="button"
@@ -3106,7 +3223,8 @@ function ChatPanel({
                       </div>
                     </div>
                   ) : (
-                    <div className={`break-words rounded-[1.35rem] px-4 py-3 text-sm leading-6 shadow-sm ${isOwnMessage ? "bg-blue-600 text-white" : "bg-[#152238] text-white/90"}`}>
+                    <div className={`break-words rounded-[1.35rem] px-4 py-3 text-sm leading-6 shadow-sm ${isOwnMessage ? "bg-[#d9fdd3] text-slate-950" : "bg-[#152238] text-white/90"}`}>
+                      {reply ? <ReplyQuote reply={reply} own={isOwnMessage} /> : null}
                       {messageBody}
                     </div>
                   )}
@@ -3185,7 +3303,7 @@ function ChatPanel({
                           <span className="w-5 text-center">!</span>
                           <span>Report message</span>
                         </button>
-                        <button type="button" onClick={() => closeMenuWithNotice("Delete needs a message delete policy before it can remove messages from Supabase safely.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-rose-200 hover:bg-rose-500/10">
+                        <button type="button" onClick={() => { setDeletedMessageIds((current) => [...new Set([...current, message.id])]); closeMessageActions(); }} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-rose-200 hover:bg-rose-500/10">
                           <span className="w-5 text-center">Del</span>
                           <span>Delete</span>
                         </button>
@@ -3438,8 +3556,8 @@ function ChatPanel({
         )}
         {draftWarning ? <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">{draftWarning}</p> : null}
         {voiceRecorderState === "preview" ? <p className="mt-2 text-center text-xs font-semibold text-emerald-200">Listen first, then send or delete.</p> : null}
-        <button onClick={onCommit} disabled={saving || communicationBlocked} className="mt-3 w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-500 disabled:opacity-60">
-          Make It Official
+        <button onClick={onCommit} disabled={saving || communicationBlocked || Boolean(partnerLabel)} className="mt-3 w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-500 disabled:opacity-60">
+          {partnerLabel ? partnerLabel : "Make It Official"}
         </button>
       </div>
 
@@ -3552,6 +3670,41 @@ function CallOverlay({
   );
 }
 function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry }: { profile?: DatingProfile; fallbackName: string; fallbackAge: number; fallbackCountry: string; }) {
-  return <div className="mt-5 rounded-[1.8rem] border border-white/10 bg-white/5 p-4"><div className="flex gap-4"><div className="h-28 w-24 overflow-hidden rounded-[1.5rem] bg-white/10">{profile?.photo_url ? <img src={profile.photo_url} alt="Your dating profile" className="h-full w-full object-cover" /> : null}</div><div className="flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-2xl font-black">{profile?.display_name || fallbackName}, {profile?.age || fallbackAge}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}</div><p className="mt-2 text-sm text-white/65">{profile?.location_label || profile?.city || fallbackCountry}</p><p className="mt-3 text-sm text-white/80">{profile?.relationship_goal || "Still figuring it out"}</p></div></div><p className="mt-4 text-sm leading-7 text-white/80">{profile?.bio || "Finish your profile setup to appear in Swipe and Explore."}</p><div className="mt-4 flex flex-wrap gap-2">{(profile?.interests || []).map((interest) => <span key={interest} className="rounded-full bg-white/10 px-3 py-2 text-xs text-white/75">{interest}</span>)}</div></div>;
+  const partnerLabel = officialPartnerLabel(profile);
+  return (
+    <div className="mt-5 overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101827] shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+      <div className="border-b border-white/10 bg-white/[0.03] p-4">
+        <div className="flex gap-4">
+          <div className="h-28 w-24 shrink-0 overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
+            {profile?.photo_url ? <img src={profile.photo_url} alt="Your dating profile" className="h-full w-full object-cover" /> : null}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="min-w-0 text-2xl font-black leading-tight">{profile?.display_name || fallbackName}, {profile?.age || fallbackAge}</h3>
+              {isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}
+            </div>
+            <p className="mt-2 text-sm font-semibold text-white/65">{profile?.location_label || profile?.city || fallbackCountry}</p>
+            <p className="mt-3 text-sm font-bold text-white/86">{profile?.relationship_goal || "Still figuring it out"}</p>
+            {partnerLabel ? <p className="mt-3 rounded-2xl bg-emerald-400/12 px-3 py-2 text-xs font-black text-emerald-100">{partnerLabel}</p> : null}
+          </div>
+        </div>
+      </div>
+      <div className="p-4">
+        <p className="text-xs uppercase tracking-[0.28em] text-white/45">Profile summary</p>
+        <p className="mt-3 text-sm leading-7 text-white/80">{profile?.bio || "Finish your profile setup to appear in Swipe and Explore."}</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-2xl bg-white/5 px-3 py-3">
+            <p className="font-black text-white">Visibility</p>
+            <p className="mt-1 text-white/60">{profile?.is_active ? "Discoverable" : "Paused"}</p>
+          </div>
+          <div className="rounded-2xl bg-white/5 px-3 py-3">
+            <p className="font-black text-white">Status</p>
+            <p className="mt-1 text-white/60">{partnerLabel ? "Taken" : "Available"}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">{(profile?.interests || []).map((interest) => <span key={interest} className="rounded-full bg-white/10 px-3 py-2 text-xs text-white/75">{interest}</span>)}</div>
+      </div>
+    </div>
+  );
 }
 

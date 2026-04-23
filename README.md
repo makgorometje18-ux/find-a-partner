@@ -16,3 +16,11 @@ npm run dev
 ```
 
 The app uses Supabase and expects the same environment variables and dating schema used by the original project.
+
+For reliable voice/video calls across different networks, add TURN credentials in Vercel:
+
+- `NEXT_PUBLIC_TURN_URLS` comma-separated TURN URLs
+- `NEXT_PUBLIC_TURN_USERNAME`
+- `NEXT_PUBLIC_TURN_CREDENTIAL`
+
+Without TURN, browsers can call on many networks through STUN, but strict mobile/carrier NATs may block WebRTC media.
