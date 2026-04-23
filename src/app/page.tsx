@@ -58,6 +58,12 @@ type DatingProfile = {
   official_partner_name?: string | null;
   official_since?: string | null;
   partnership_visible?: boolean | null;
+  intent_lounge?: string | null;
+  wants_kids?: string | null;
+  has_kids?: string | null;
+  smokes?: string | null;
+  drinks?: string | null;
+  sober_dates?: boolean | null;
 };
 
 type MatchRow = {
@@ -109,6 +115,8 @@ type PartnerUserControls = {
   disappearingMessages?: boolean;
   chatClearedAt?: string;
   deletedChat?: boolean;
+  closed?: boolean;
+  unmatched?: boolean;
 };
 type CallState = {
   status: CallStatus;
@@ -127,6 +135,19 @@ const baseProgress: Progress = {
   house: "None",
   record: 0,
   jailYears: 0,
+};
+type OfficialRequestRow = {
+  id: string;
+  match_id: string;
+  requester_id: string;
+  partner_id: string;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  responded_at: string | null;
+};
+type VouchRow = {
+  voucher_id: string;
+  vouched_user_id: string;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -170,6 +191,11 @@ const rtcConfig: RTCConfiguration = {
   ],
   iceCandidatePoolSize: 8,
 };
+const intentLounges = ["Serious Relationship", "Casual Dating", "Friendship/Social", "Networking"];
+const filterAny = "Any";
+const kidsFilters = [filterAny, "Open", "Yes", "No", "Prefer not to say"];
+const habitFilters = [filterAny, "No", "Sometimes", "Yes", "Prefer not to say"];
+const activeChatLimit = 5;
 const voiceAudioConstraints: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 const isProfileVerified = (profile?: Pick<DatingProfile, "contact_verified" | "profile_verified" | "is_photo_verified" | "selfie_url">) =>
   Boolean(profile?.contact_verified || profile?.profile_verified || (profile?.is_photo_verified && profile.selfie_url));
@@ -368,6 +394,15 @@ export default function PartnerScenePage() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [safetySettings, setSafetySettings] = useState<PartnerSafetySettings>(defaultSafetySettings);
   const [userControls, setUserControls] = useState<Record<string, PartnerUserControls>>({});
+  const [activeLounge, setActiveLounge] = useState("Serious Relationship");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [kidsFilter, setKidsFilter] = useState(filterAny);
+  const [smokesFilter, setSmokesFilter] = useState(filterAny);
+  const [drinksFilter, setDrinksFilter] = useState(filterAny);
+  const [soberDatesOnly, setSoberDatesOnly] = useState(false);
+  const [officialRequests, setOfficialRequests] = useState<OfficialRequestRow[]>([]);
+  const [vouchCounts, setVouchCounts] = useState<Record<string, number>>({});
+  const [vouchedIds, setVouchedIds] = useState<string[]>([]);
   const [matchCelebrationProfile, setMatchCelebrationProfile] = useState<DatingProfile | null>(null);
   const [callState, setCallState] = useState<CallState | null>(null);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
@@ -613,6 +648,7 @@ export default function PartnerScenePage() {
 
       const matchIds = typedMatches.map((row) => row.id);
       let messageRows: MessageRow[] = [];
+      let requestRows: OfficialRequestRow[] = [];
       if (matchIds.length) {
         const { data: fetchedMessages, error: messageError } = await supabase
           .from("dating_messages")
@@ -625,7 +661,23 @@ export default function PartnerScenePage() {
           return;
         }
         messageRows = (fetchedMessages || []) as MessageRow[];
+
+        const { data: fetchedRequests } = await supabase
+          .from("dating_official_requests")
+          .select("id, match_id, requester_id, partner_id, status, created_at, responded_at")
+          .in("match_id", matchIds);
+        requestRows = (fetchedRequests || []) as OfficialRequestRow[];
       }
+
+      const { data: fetchedVouches } = await supabase
+        .from("dating_vouches")
+        .select("voucher_id, vouched_user_id")
+        .in("vouched_user_id", presenceIds);
+      const typedVouches = (fetchedVouches || []) as VouchRow[];
+      const nextVouchCounts = typedVouches.reduce<Record<string, number>>((accumulator, row) => {
+        accumulator[row.vouched_user_id] = (accumulator[row.vouched_user_id] || 0) + 1;
+        return accumulator;
+      }, {});
 
       const nextLikedIds = (likesMade || []).map((row) => row.liked_user_id);
       const remoteBlockControls = ((blockRows || []) as DatingBlockRow[]).map((row) =>
@@ -645,11 +697,15 @@ export default function PartnerScenePage() {
       }, {});
       setPlayer(playerData as PlayerRecord);
       setProgress(extra);
+      setActiveLounge(ownDatingProfile.intent_lounge || ownDatingProfile.relationship_goal || "Serious Relationship");
       setProfiles(visibleProfiles);
       setProfileMap(nextMap);
       setPresenceMap(nextPresenceMap);
       setMatches(typedMatches);
       setMessages(messageRows);
+      setOfficialRequests(requestRows);
+      setVouchCounts(nextVouchCounts);
+      setVouchedIds(typedVouches.filter((row) => row.voucher_id === user.id).map((row) => row.vouched_user_id));
       setLikedIds(nextLikedIds);
       setLikedMeIds((likesReceived || []).map((row) => row.liker_id));
       if (Object.keys(remoteControls).length) {
@@ -1039,8 +1095,18 @@ export default function PartnerScenePage() {
   }, [matches.length, player]);
 
   const visiblePartnerProfiles = useMemo(
-    () => profiles.filter((profile) => !userControls[profile.user_id]?.blocked && !userControls[profile.user_id]?.blockedBy),
-    [profiles, userControls]
+    () =>
+      profiles.filter((profile) => {
+        const controls = userControls[profile.user_id] || {};
+        if (controls.blocked || controls.blockedBy) return false;
+        if ((profile.intent_lounge || profile.relationship_goal || "Serious Relationship") !== activeLounge) return false;
+        if (kidsFilter !== filterAny && profile.wants_kids !== kidsFilter) return false;
+        if (smokesFilter !== filterAny && profile.smokes !== smokesFilter) return false;
+        if (drinksFilter !== filterAny && profile.drinks !== drinksFilter) return false;
+        if (soberDatesOnly && !profile.sober_dates) return false;
+        return true;
+      }),
+    [activeLounge, drinksFilter, kidsFilter, profiles, smokesFilter, soberDatesOnly, userControls]
   );
 
   const currentProfile = useMemo(() => {
@@ -1056,6 +1122,20 @@ export default function PartnerScenePage() {
   const activeMatch = matches.find((match) => match.id === activeMatchId) || null;
   const activeMatchProfile = activeMatch ? profileMap[activeMatch.user_a === player?.id ? activeMatch.user_b : activeMatch.user_a] : null;
   const activeMatchControls = activeMatchProfile ? userControls[activeMatchProfile.user_id] || {} : {};
+  const activeOfficialRequest = activeMatch && player && activeMatchProfile
+    ? officialRequests.find(
+        (request) =>
+          request.match_id === activeMatch.id &&
+          request.status === "pending" &&
+          ((request.requester_id === player.id && request.partner_id === activeMatchProfile.user_id) ||
+            (request.requester_id === activeMatchProfile.user_id && request.partner_id === player.id))
+      )
+    : null;
+  const officialButtonLabel = activeOfficialRequest
+    ? activeOfficialRequest.requester_id === player?.id
+      ? "Official request sent"
+      : "Confirm Official"
+    : "Make It Official";
   const activeMessages = activeMatch ? messages.filter((message) => message.match_id === activeMatch.id) : [];
   const ownDatingProfile = player ? profileMap[player.id] : null;
   const distanceForProfile = (profile?: DatingProfile | null) =>
@@ -1075,8 +1155,31 @@ export default function PartnerScenePage() {
   const chatMatches = matches;
   const visibleMatches = matches.filter((match) => {
     const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
-    return !userControls[partnerId]?.blocked;
+    const controls = userControls[partnerId] || {};
+    return !controls.blocked && !controls.unmatched;
   });
+  const activeChatMatches = visibleMatches.filter((match) => {
+    const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
+    const controls = userControls[partnerId] || {};
+    return !controls.deletedChat && !controls.closed;
+  });
+  const canOpenActiveChat = (match: MatchRow) => {
+    const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
+    if (!userControls[partnerId]?.closed && !userControls[partnerId]?.deletedChat) return true;
+    return activeChatMatches.length < activeChatLimit;
+  };
+  const openMatchChat = (match: MatchRow) => {
+    const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
+    if (!canOpenActiveChat(match)) {
+      setStatus(`You can keep ${activeChatLimit} active chats. Close or archive one before opening another.`);
+      setActiveTab("chat");
+      return;
+    }
+    updateUserControls(partnerId, { closed: false, deletedChat: false });
+    markMatchAsRead(match.id);
+    setActiveMatchId(match.id);
+    setActiveTab("chat");
+  };
   const exploreProfiles = visiblePartnerProfiles.slice(0, 8);
 
   const markMatchAsRead = (matchId: string) => {
@@ -1806,7 +1909,7 @@ export default function PartnerScenePage() {
   };
 
   const makeItOfficial = async () => {
-    if (!player || !activeMatchProfile || saving) return;
+    if (!player || !activeMatch || !activeMatchProfile || saving) return;
     if (activeMatchProfile.official_partner_id && activeMatchProfile.official_partner_id !== player.id) {
       setError(`${activeMatchProfile.display_name} is already marked as taken by ${activeMatchProfile.official_partner_name || "someone else"}.`);
       return;
@@ -1818,11 +1921,54 @@ export default function PartnerScenePage() {
       const ownProfile = profileMap[player.id];
       const nextProgress = { ...progress, spouse: activeMatchProfile.display_name };
       const officialSince = new Date().toISOString();
-      window.localStorage.setItem(`partner-progress:${player.id}`, JSON.stringify(nextProgress));
-      window.sessionStorage.setItem(
-        `partner-flash:${player.id}`,
-        `You and ${activeMatchProfile.display_name} made it official.`
+      const incomingRequest = officialRequests.find(
+        (request) =>
+          request.match_id === activeMatch.id &&
+          request.requester_id === activeMatchProfile.user_id &&
+          request.partner_id === player.id &&
+          request.status === "pending"
       );
+
+      if (!incomingRequest) {
+        const { data: createdRequest, error: requestError } = await supabase
+          .from("dating_official_requests")
+          .upsert(
+            {
+              match_id: activeMatch.id,
+              requester_id: player.id,
+              partner_id: activeMatchProfile.user_id,
+              status: "pending",
+            },
+            { onConflict: "match_id,requester_id,partner_id" }
+          )
+          .select("id, match_id, requester_id, partner_id, status, created_at, responded_at")
+          .single();
+
+        if (requestError) {
+          setError(requestError.message || schemaHelp);
+          setSaving(false);
+          return;
+        }
+
+        if (createdRequest) {
+          setOfficialRequests((current) => [...current.filter((request) => request.id !== createdRequest.id), createdRequest as OfficialRequestRow]);
+        }
+        await sendMessage(`${activeMatchProfile.display_name}, I want us to make it official. Please tap Make It Official to confirm.`, false);
+        setStatus(`Official request sent to ${activeMatchProfile.display_name}. They must confirm too.`);
+        setSaving(false);
+        return;
+      }
+
+      await supabase
+        .from("dating_official_requests")
+        .update({ status: "accepted", responded_at: officialSince })
+        .eq("id", incomingRequest.id);
+      setOfficialRequests((current) =>
+        current.map((request) => (request.id === incomingRequest.id ? { ...request, status: "accepted", responded_at: officialSince } : request))
+      );
+
+      window.localStorage.setItem(`partner-progress:${player.id}`, JSON.stringify(nextProgress));
+      window.sessionStorage.setItem(`partner-flash:${player.id}`, `You and ${activeMatchProfile.display_name} made it official.`);
 
       const { error: ownProfileError } = await supabase
         .from("dating_profiles")
@@ -1879,6 +2025,69 @@ export default function PartnerScenePage() {
       setError("Could not save this match right now. Please try again.");
       setSaving(false);
     }
+  };
+
+  const vouchForMatch = async () => {
+    if (!player || !activeMatch || !activeMatchProfile) return;
+    const note = window.prompt(`Confirm you met ${activeMatchProfile.display_name} in person. Optional note:`, "Real person, met safely.");
+    if (note === null) return;
+
+    const { error: vouchError } = await supabase
+      .from("dating_vouches")
+      .upsert(
+        {
+          voucher_id: player.id,
+          vouched_user_id: activeMatchProfile.user_id,
+          match_id: activeMatch.id,
+          note: note.trim() || "Met in person.",
+        },
+        { onConflict: "voucher_id,vouched_user_id" }
+      );
+
+    if (vouchError) {
+      setError(vouchError.message || schemaHelp);
+      return;
+    }
+
+    setVouchedIds((current) => [...new Set([...current, activeMatchProfile.user_id])]);
+    setVouchCounts((current) => ({ ...current, [activeMatchProfile.user_id]: (current[activeMatchProfile.user_id] || 0) + 1 }));
+    setStatus(`You vouched that ${activeMatchProfile.display_name} is a real person.`);
+  };
+
+  const planSafeDate = async () => {
+    if (!player || !activeMatch || !activeMatchProfile) return;
+    const title = window.prompt("Date plan title", "First safe meet-up");
+    if (!title?.trim()) return;
+    const place = window.prompt("Public place", "A cafe or public mall nearby");
+    if (!place?.trim()) return;
+    const when = window.prompt("When? Use a date/time or words", "This weekend");
+    const emergencyContact = window.prompt("Emergency contact phone/email (optional)", "") || "";
+
+    const { error: dateError } = await supabase.from("dating_date_plans").insert({
+      match_id: activeMatch.id,
+      creator_id: player.id,
+      partner_id: activeMatchProfile.user_id,
+      title: title.trim(),
+      place: place.trim(),
+      planned_for: null,
+      emergency_contact: emergencyContact.trim() || null,
+    });
+
+    if (dateError) {
+      setError(dateError.message || schemaHelp);
+      return;
+    }
+
+    await sendMessage(`${chatDatePlanPrefix}${encodeChatPayload({ title: title.trim(), when: when?.trim() || "To be confirmed", place: place.trim(), note: emergencyContact.trim() ? "Safe-date check-in saved with emergency contact." : "Safe-date check-in reminder saved." })}`, false);
+    setStatus(`Safe date plan created with ${activeMatchProfile.display_name}.`);
+  };
+
+  const suggestMeetupSpot = async () => {
+    if (!activeMatchProfile) return;
+    const location = activeMatchProfile.location_label || activeMatchProfile.city || "nearby";
+    const mapsUrl = `https://www.google.com/maps/search/public+cafe+mall+well+lit+place+near+${encodeURIComponent(location)}`;
+    await sendMessage(`${chatDatePlanPrefix}${encodeChatPayload({ title: "Suggested public meet-up spots", when: "Choose a safe time", place: location, note: mapsUrl })}`, false);
+    setStatus("Suggested public meet-up spots shared in chat.");
   };
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-[#0c0b10] text-white"><p className="text-2xl font-semibold">Opening partner finder...</p></main>;
@@ -1953,6 +2162,20 @@ export default function PartnerScenePage() {
           <section className="rounded-[1.6rem] border border-white/10 bg-black/35 p-3 shadow-xl backdrop-blur">
             <p className="text-sm uppercase tracking-[0.3em] text-white/50">Encounters</p>
             <h2 className="mt-1 text-3xl font-bold">Swipe</h2>
+            <DiscoveryControls
+              activeLounge={activeLounge}
+              onLoungeChange={setActiveLounge}
+              filtersOpen={filtersOpen}
+              onToggleFilters={() => setFiltersOpen((current) => !current)}
+              kidsFilter={kidsFilter}
+              onKidsFilterChange={setKidsFilter}
+              smokesFilter={smokesFilter}
+              onSmokesFilterChange={setSmokesFilter}
+              drinksFilter={drinksFilter}
+              onDrinksFilterChange={setDrinksFilter}
+              soberDatesOnly={soberDatesOnly}
+              onSoberDatesOnlyChange={setSoberDatesOnly}
+            />
             {currentProfile ? <SwipeCard profile={currentProfile} distanceLabel={distanceForProfile(currentProfile)} saving={saving} onPass={passProfile} onLike={() => void likeProfile()} onSuperLike={() => void likeProfile(true)} /> : <EmptySwipeState />}
           </section>
         ) : null}
@@ -1961,6 +2184,20 @@ export default function PartnerScenePage() {
           <section className="rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur">
             <p className="text-sm uppercase tracking-[0.3em] text-white/50">Explore</p>
             <h2 className="mt-2 text-3xl font-bold">Relationship goals</h2>
+            <DiscoveryControls
+              activeLounge={activeLounge}
+              onLoungeChange={setActiveLounge}
+              filtersOpen={filtersOpen}
+              onToggleFilters={() => setFiltersOpen((current) => !current)}
+              kidsFilter={kidsFilter}
+              onKidsFilterChange={setKidsFilter}
+              smokesFilter={smokesFilter}
+              onSmokesFilterChange={setSmokesFilter}
+              drinksFilter={drinksFilter}
+              onDrinksFilterChange={setDrinksFilter}
+              soberDatesOnly={soberDatesOnly}
+              onSoberDatesOnlyChange={setSoberDatesOnly}
+            />
             <div className="mt-5 grid grid-cols-2 gap-3">{goalCards.length ? goalCards.map((card, index) => <GoalCard key={card.goal} goal={card.goal} count={card.count} palette={card.palette} featured={index === 0} />) : <DefaultExploreEmpty />}</div>
             <div className="mt-6 space-y-3">{exploreProfiles.map((profile) => <ExploreRow key={profile.user_id} profile={profile} distanceLabel={distanceForProfile(profile)} />)}</div>
           </section>
@@ -1977,7 +2214,7 @@ export default function PartnerScenePage() {
             </div>
             <div className="mt-6 space-y-3">{visibleMatches.map((match) => {
               const profile = profileMap[match.user_a === player?.id ? match.user_b : match.user_a];
-              return <MatchRowButton key={match.id} match={match} playerId={player?.id || ""} profile={profile} distanceLabel={distanceForProfile(profile)} onOpen={() => { markMatchAsRead(match.id); setActiveMatchId(match.id); setActiveTab("chat"); }} />;
+              return <MatchRowButton key={match.id} match={match} playerId={player?.id || ""} profile={profile} distanceLabel={distanceForProfile(profile)} onOpen={() => openMatchChat(match)} />;
             })}</div>
           </section>
         ) : null}
@@ -2005,6 +2242,7 @@ export default function PartnerScenePage() {
                 onSend={(body, clearDraft) => void sendMessage(body, clearDraft)}
                 onQuickSend={(body) => void sendMessage(body)}
                 onCommit={() => void makeItOfficial()}
+                officialButtonLabel={officialButtonLabel}
                 onBack={() => {
                   setActiveMatchId("");
                 setChatDraft("");
@@ -2018,11 +2256,20 @@ export default function PartnerScenePage() {
                 onAttachmentSend={(file, kind) => void sendChatAttachment(file, kind)}
                 onVoiceSend={(blob) => void sendVoiceNote(blob)}
                 onStartCall={(kind) => void startCall(kind)}
+                onPlanSafeDate={() => void planSafeDate()}
+                onSuggestMeetupSpot={() => void suggestMeetupSpot()}
+                onVouch={() => void vouchForMatch()}
+                vouchCount={vouchCounts[activeMatchProfile.user_id] || 0}
+                hasVouched={vouchedIds.includes(activeMatchProfile.user_id)}
                 onToggleMute={() => updateUserControls(activeMatchProfile.user_id, { muted: !activeMatchControls.muted })}
                 onToggleFavourite={() => updateUserControls(activeMatchProfile.user_id, { favourite: !activeMatchControls.favourite })}
                 onToggleListed={() => updateUserControls(activeMatchProfile.user_id, { listed: !activeMatchControls.listed })}
                 onToggleDisappearing={() => updateUserControls(activeMatchProfile.user_id, { disappearingMessages: !activeMatchControls.disappearingMessages })}
                 onClearChat={() => updateUserControls(activeMatchProfile.user_id, { chatClearedAt: new Date().toISOString(), deletedChat: false })}
+                onCloseChat={() => {
+                  updateUserControls(activeMatchProfile.user_id, { closed: true });
+                  setActiveMatchId("");
+                }}
                 onDeleteChat={() => {
                   updateUserControls(activeMatchProfile.user_id, { deletedChat: true, chatClearedAt: new Date().toISOString() });
                   setActiveMatchId("");
@@ -2038,9 +2285,12 @@ export default function PartnerScenePage() {
               />
             ) : chatMatches.length ? (
               <div className="mt-5 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold text-white/65">
+                  Active chats: {activeChatMatches.length}/{activeChatLimit}. Close a chat to make room for a new one.
+                </div>
                 {chatMatches.filter((match) => {
                   const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
-                  return !userControls[partnerId]?.deletedChat;
+                  return !userControls[partnerId]?.deletedChat && !userControls[partnerId]?.unmatched;
                 }).map((match) => {
                   const profile = profileMap[match.user_a === player?.id ? match.user_b : match.user_a];
                   const partnerId = match.user_a === player?.id ? match.user_b : match.user_a;
@@ -2054,10 +2304,7 @@ export default function PartnerScenePage() {
                       presence={profile ? presenceMap[profile.user_id] : undefined}
                       blocked={Boolean(userControls[partnerId]?.blocked)}
                       blockedBy={Boolean(userControls[partnerId]?.blockedBy)}
-                      onOpen={() => {
-                        markMatchAsRead(match.id);
-                        setActiveMatchId(match.id);
-                      }}
+                      onOpen={() => openMatchChat(match)}
                     />
                   );
                 })}
@@ -2305,6 +2552,66 @@ function EmptySwipeState() {
   return <div className="mt-5 rounded-[2rem] border border-white/10 bg-white/5 p-6"><p className="text-sm uppercase tracking-[0.3em] text-white/50">No More Profiles</p><h3 className="mt-3 text-2xl font-bold">The deck is empty right now</h3><p className="mt-3 text-sm leading-7 text-white/75">As more real players create verified profiles, they will appear here under Swipe.</p></div>;
 }
 
+function DiscoveryControls({
+  activeLounge,
+  onLoungeChange,
+  filtersOpen,
+  onToggleFilters,
+  kidsFilter,
+  onKidsFilterChange,
+  smokesFilter,
+  onSmokesFilterChange,
+  drinksFilter,
+  onDrinksFilterChange,
+  soberDatesOnly,
+  onSoberDatesOnlyChange,
+}: {
+  activeLounge: string;
+  onLoungeChange: (value: string) => void;
+  filtersOpen: boolean;
+  onToggleFilters: () => void;
+  kidsFilter: string;
+  onKidsFilterChange: (value: string) => void;
+  smokesFilter: string;
+  onSmokesFilterChange: (value: string) => void;
+  drinksFilter: string;
+  onDrinksFilterChange: (value: string) => void;
+  soberDatesOnly: boolean;
+  onSoberDatesOnlyChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-3">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {intentLounges.map((lounge) => (
+          <button key={lounge} type="button" onClick={() => onLoungeChange(lounge)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-black ${activeLounge === lounge ? "bg-sky-400 text-slate-950" : "bg-white/10 text-white/75"}`}>
+            {lounge}
+          </button>
+        ))}
+      </div>
+      <button type="button" onClick={onToggleFilters} className="mt-3 w-full rounded-2xl bg-white/10 px-4 py-3 text-left text-sm font-black text-white">
+        {filtersOpen ? "Hide filters" : "Meaningful filters"}
+      </button>
+      {filtersOpen ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <select value={kidsFilter} onChange={(event) => onKidsFilterChange(event.target.value)} className="rounded-2xl bg-[#101827] px-3 py-3 text-sm font-semibold text-white outline-none">
+            {kidsFilters.map((value) => <option key={value} value={value}>Wants kids: {value}</option>)}
+          </select>
+          <select value={smokesFilter} onChange={(event) => onSmokesFilterChange(event.target.value)} className="rounded-2xl bg-[#101827] px-3 py-3 text-sm font-semibold text-white outline-none">
+            {habitFilters.map((value) => <option key={value} value={value}>Smokes: {value}</option>)}
+          </select>
+          <select value={drinksFilter} onChange={(event) => onDrinksFilterChange(event.target.value)} className="rounded-2xl bg-[#101827] px-3 py-3 text-sm font-semibold text-white outline-none">
+            {habitFilters.map((value) => <option key={value} value={value}>Drinks: {value}</option>)}
+          </select>
+          <label className="flex items-center gap-3 rounded-2xl bg-[#101827] px-3 py-3 text-sm font-semibold text-white">
+            <input type="checkbox" checked={soberDatesOnly} onChange={(event) => onSoberDatesOnlyChange(event.target.checked)} />
+            <span>Sober first dates</span>
+          </label>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function GoalCard({ goal, count, palette, featured }: { goal: string; count: number; palette: string; featured: boolean }) {
   return (
     <div className={`rounded-[1.8rem] bg-gradient-to-br ${palette} p-4 ${featured ? "col-span-2 min-h-44" : "min-h-36"}`}>
@@ -2517,6 +2824,7 @@ function ChatPanel({
   onSend,
   onQuickSend,
   onCommit,
+  officialButtonLabel,
   onBack,
   presence,
   distanceLabel,
@@ -2527,11 +2835,17 @@ function ChatPanel({
   onAttachmentSend,
   onVoiceSend,
   onStartCall,
+  onPlanSafeDate,
+  onSuggestMeetupSpot,
+  onVouch,
+  vouchCount,
+  hasVouched,
   onToggleMute,
   onToggleFavourite,
   onToggleListed,
   onToggleDisappearing,
   onClearChat,
+  onCloseChat,
   onDeleteChat,
   onBlock,
   onReport,
@@ -2545,6 +2859,7 @@ function ChatPanel({
   onSend: (body?: string, clearDraft?: boolean) => void;
   onQuickSend: (body: string) => void;
   onCommit: () => void;
+  officialButtonLabel: string;
   onBack: () => void;
   presence?: PlayerPresence;
   distanceLabel: string | null;
@@ -2555,11 +2870,17 @@ function ChatPanel({
   onAttachmentSend: (file: File, kind: "document" | "media" | "camera" | "audio") => void;
   onVoiceSend: (blob: Blob) => void;
   onStartCall: (kind: "voice" | "video") => void;
+  onPlanSafeDate: () => void;
+  onSuggestMeetupSpot: () => void;
+  onVouch: () => void;
+  vouchCount: number;
+  hasVouched: boolean;
   onToggleMute: () => void;
   onToggleFavourite: () => void;
   onToggleListed: () => void;
   onToggleDisappearing: () => void;
   onClearChat: () => void;
+  onCloseChat: () => void;
   onDeleteChat: () => void;
   onBlock: () => void;
   onReport: () => void;
@@ -2681,6 +3002,7 @@ function ChatPanel({
     setSelectedMessageId(null);
     setOpenActionsFor(null);
   };
+
   const openMessageActions = (messageId: string) => {
     setSelectedMessageId(messageId);
     setOpenActionsFor(messageId);
@@ -3078,7 +3400,19 @@ function ChatPanel({
               <span className="w-4 text-center">▣</span>
               <span>{userControls.listed ? "Remove from list" : "Add to list"}</span>
             </button>
-            <button type="button" onClick={() => { setShowConversationMenu(false); onBack(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
+            <button type="button" onClick={() => { setShowConversationMenu(false); onPlanSafeDate(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
+              <span className="w-4 text-center">✓</span>
+              <span>Plan safe date</span>
+            </button>
+            <button type="button" onClick={() => { setShowConversationMenu(false); onSuggestMeetupSpot(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
+              <span className="w-4 text-center">⌖</span>
+              <span>Public meet-up spots</span>
+            </button>
+            <button type="button" onClick={() => { setShowConversationMenu(false); onVouch(); }} disabled={hasVouched} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10 disabled:opacity-50">
+              <span className="w-4 text-center">★</span>
+              <span>{hasVouched ? `Vouched (${vouchCount})` : `Vouch (${vouchCount})`}</span>
+            </button>
+            <button type="button" onClick={() => { setShowConversationMenu(false); onCloseChat(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">×</span>
               <span>Close chat</span>
             </button>
@@ -3598,8 +3932,8 @@ function ChatPanel({
         )}
         {draftWarning ? <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">{draftWarning}</p> : null}
         {voiceRecorderState === "preview" ? <p className="mt-2 text-center text-xs font-semibold text-emerald-200">Listen first, then send or delete.</p> : null}
-        <button onClick={onCommit} disabled={saving || communicationBlocked || Boolean(partnerLabel)} className="mt-3 w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-500 disabled:opacity-60">
-          {partnerLabel ? partnerLabel : "Make It Official"}
+        <button onClick={onCommit} disabled={saving || communicationBlocked || Boolean(partnerLabel) || officialButtonLabel === "Official request sent"} className="mt-3 w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-500 disabled:opacity-60">
+          {partnerLabel || officialButtonLabel}
         </button>
       </div>
 

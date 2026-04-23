@@ -29,6 +29,12 @@ create table if not exists public.dating_profiles (
   official_partner_name text,
   official_since timestamptz,
   partnership_visible boolean not null default false,
+  intent_lounge text not null default 'Serious Relationship',
+  wants_kids text not null default 'Open',
+  has_kids text not null default 'Prefer not to say',
+  smokes text not null default 'Prefer not to say',
+  drinks text not null default 'Prefer not to say',
+  sober_dates boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -54,6 +60,12 @@ alter table public.dating_profiles add column if not exists official_partner_id 
 alter table public.dating_profiles add column if not exists official_partner_name text;
 alter table public.dating_profiles add column if not exists official_since timestamptz;
 alter table public.dating_profiles add column if not exists partnership_visible boolean not null default false;
+alter table public.dating_profiles add column if not exists intent_lounge text not null default 'Serious Relationship';
+alter table public.dating_profiles add column if not exists wants_kids text not null default 'Open';
+alter table public.dating_profiles add column if not exists has_kids text not null default 'Prefer not to say';
+alter table public.dating_profiles add column if not exists smokes text not null default 'Prefer not to say';
+alter table public.dating_profiles add column if not exists drinks text not null default 'Prefer not to say';
+alter table public.dating_profiles add column if not exists sober_dates boolean not null default false;
 
 create table if not exists public.dating_likes (
   id uuid primary key default gen_random_uuid(),
@@ -102,12 +114,53 @@ create table if not exists public.dating_reports (
   constraint dating_report_pair_check check (reporter_id <> reported_user_id)
 );
 
+create table if not exists public.dating_official_requests (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.dating_matches(id) on delete cascade,
+  requester_id uuid not null references public.players(id) on delete cascade,
+  partner_id uuid not null references public.players(id) on delete cascade,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  responded_at timestamptz,
+  unique (match_id, requester_id, partner_id),
+  constraint dating_official_pair_check check (requester_id <> partner_id)
+);
+
+create table if not exists public.dating_vouches (
+  id uuid primary key default gen_random_uuid(),
+  voucher_id uuid not null references public.players(id) on delete cascade,
+  vouched_user_id uuid not null references public.players(id) on delete cascade,
+  match_id uuid references public.dating_matches(id) on delete cascade,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (voucher_id, vouched_user_id),
+  constraint dating_vouch_pair_check check (voucher_id <> vouched_user_id)
+);
+
+create table if not exists public.dating_date_plans (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.dating_matches(id) on delete cascade,
+  creator_id uuid not null references public.players(id) on delete cascade,
+  partner_id uuid not null references public.players(id) on delete cascade,
+  title text not null,
+  place text not null,
+  planned_for timestamptz,
+  emergency_contact text,
+  status text not null default 'planned',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint dating_date_plan_pair_check check (creator_id <> partner_id)
+);
+
 alter table public.dating_profiles enable row level security;
 alter table public.dating_likes enable row level security;
 alter table public.dating_matches enable row level security;
 alter table public.dating_messages enable row level security;
 alter table public.dating_blocks enable row level security;
 alter table public.dating_reports enable row level security;
+alter table public.dating_official_requests enable row level security;
+alter table public.dating_vouches enable row level security;
+alter table public.dating_date_plans enable row level security;
 
 drop policy if exists "dating profiles readable by signed in users" on public.dating_profiles;
 create policy "dating profiles readable by signed in users"
@@ -234,6 +287,54 @@ create policy "users update own dating reports"
 on public.dating_reports for update to authenticated
 using (auth.uid() = reporter_id)
 with check (auth.uid() = reporter_id);
+
+drop policy if exists "users read official requests they are part of" on public.dating_official_requests;
+create policy "users read official requests they are part of"
+on public.dating_official_requests for select to authenticated
+using (auth.uid() = requester_id or auth.uid() = partner_id);
+
+drop policy if exists "users create own official requests" on public.dating_official_requests;
+create policy "users create own official requests"
+on public.dating_official_requests for insert to authenticated
+with check (auth.uid() = requester_id);
+
+drop policy if exists "users update official requests they are part of" on public.dating_official_requests;
+create policy "users update official requests they are part of"
+on public.dating_official_requests for update to authenticated
+using (auth.uid() = requester_id or auth.uid() = partner_id)
+with check (auth.uid() = requester_id or auth.uid() = partner_id);
+
+drop policy if exists "users read vouches involving them" on public.dating_vouches;
+create policy "users read vouches involving them"
+on public.dating_vouches for select to authenticated
+using (auth.uid() = voucher_id or auth.uid() = vouched_user_id);
+
+drop policy if exists "users create own vouches" on public.dating_vouches;
+create policy "users create own vouches"
+on public.dating_vouches for insert to authenticated
+with check (auth.uid() = voucher_id);
+
+drop policy if exists "users update own vouches" on public.dating_vouches;
+create policy "users update own vouches"
+on public.dating_vouches for update to authenticated
+using (auth.uid() = voucher_id)
+with check (auth.uid() = voucher_id);
+
+drop policy if exists "users read own date plans" on public.dating_date_plans;
+create policy "users read own date plans"
+on public.dating_date_plans for select to authenticated
+using (auth.uid() = creator_id or auth.uid() = partner_id);
+
+drop policy if exists "users create own date plans" on public.dating_date_plans;
+create policy "users create own date plans"
+on public.dating_date_plans for insert to authenticated
+with check (auth.uid() = creator_id);
+
+drop policy if exists "users update own date plans" on public.dating_date_plans;
+create policy "users update own date plans"
+on public.dating_date_plans for update to authenticated
+using (auth.uid() = creator_id or auth.uid() = partner_id)
+with check (auth.uid() = creator_id or auth.uid() = partner_id);
 
 insert into storage.buckets (id, name, public)
 values ('dating-photos', 'dating-photos', true)

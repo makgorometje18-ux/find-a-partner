@@ -53,6 +53,12 @@ type ExistingProfile = {
   gender: string | null;
   preferred_gender: string | null;
   relationship_goal: string | null;
+  intent_lounge?: string | null;
+  wants_kids?: string | null;
+  has_kids?: string | null;
+  smokes?: string | null;
+  drinks?: string | null;
+  sober_dates?: boolean | null;
   preferred_contact_method: string | null;
   contact_value: string | null;
   contact_verified: boolean;
@@ -80,6 +86,9 @@ const defaultGoalCards = [
   { title: "Short-term connection", text: "Meet new people and keep things open." },
   { title: "Still figuring it out", text: "Stay open while learning what feels right." },
 ];
+const intentLounges = ["Serious Relationship", "Casual Dating", "Friendship/Social", "Networking"];
+const lifestyleAnswers = ["Open", "Yes", "No", "Prefer not to say"];
+const habitAnswers = ["No", "Sometimes", "Yes", "Prefer not to say"];
 
 const africanDialCodes = [
   { country: "Algeria", code: "+213" },
@@ -349,6 +358,12 @@ export default function PartnerSetupPage() {
   const [gender, setGender] = useState("Man");
   const [preferredGender, setPreferredGender] = useState("All");
   const [relationshipGoal, setRelationshipGoal] = useState("Long-term relationship");
+  const [intentLounge, setIntentLounge] = useState("Serious Relationship");
+  const [wantsKids, setWantsKids] = useState("Open");
+  const [hasKids, setHasKids] = useState("Prefer not to say");
+  const [smokes, setSmokes] = useState("Prefer not to say");
+  const [drinks, setDrinks] = useState("Prefer not to say");
+  const [soberDates, setSoberDates] = useState(false);
   const [bio, setBio] = useState("");
   const [interests, setInterests] = useState("");
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
@@ -497,6 +512,12 @@ export default function PartnerSetupPage() {
         setGender(typedProfile?.gender || "Man");
         setPreferredGender(typedProfile?.preferred_gender || "All");
         setRelationshipGoal(typedProfile?.relationship_goal || "Long-term relationship");
+        setIntentLounge(typedProfile?.intent_lounge || "Serious Relationship");
+        setWantsKids(typedProfile?.wants_kids || "Open");
+        setHasKids(typedProfile?.has_kids || "Prefer not to say");
+        setSmokes(typedProfile?.smokes || "Prefer not to say");
+        setDrinks(typedProfile?.drinks || "Prefer not to say");
+        setSoberDates(Boolean(typedProfile?.sober_dates));
         setBio(typedProfile?.bio || "");
         setInterests((typedProfile?.interests || []).join(", "));
         setPhotoUrl(typedProfile?.photo_url || "");
@@ -1264,6 +1285,12 @@ export default function PartnerSetupPage() {
         gender,
         preferred_gender: preferredGender,
         relationship_goal: relationshipGoal,
+        intent_lounge: intentLounge,
+        wants_kids: wantsKids,
+        has_kids: hasKids,
+        smokes,
+        drinks,
+        sober_dates: soberDates,
         preferred_contact_method: method,
         contact_value: method === "phone" ? normalizePhoneNumber(contactValue, phoneDialCode) : normalizeEmailAddress(contactValue),
         contact_verified: true,
@@ -1569,6 +1596,32 @@ export default function PartnerSetupPage() {
                       <option key={goal.title}>{goal.title}</option>
                     ))}
                   </select>
+                  <select value={intentLounge} onChange={(event) => setIntentLounge(event.target.value)} className={premiumSelectClass}>
+                    {intentLounges.map((lounge) => (
+                      <option key={lounge}>{lounge}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/8 p-4">
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/70">Lifestyle filters</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <select value={wantsKids} onChange={(event) => setWantsKids(event.target.value)} className={premiumSelectClass}>
+                      {lifestyleAnswers.map((answer) => <option key={answer} value={answer}>Wants kids: {answer}</option>)}
+                    </select>
+                    <select value={hasKids} onChange={(event) => setHasKids(event.target.value)} className={premiumSelectClass}>
+                      {lifestyleAnswers.map((answer) => <option key={answer} value={answer}>Has kids: {answer}</option>)}
+                    </select>
+                    <select value={smokes} onChange={(event) => setSmokes(event.target.value)} className={premiumSelectClass}>
+                      {habitAnswers.map((answer) => <option key={answer} value={answer}>Smokes: {answer}</option>)}
+                    </select>
+                    <select value={drinks} onChange={(event) => setDrinks(event.target.value)} className={premiumSelectClass}>
+                      {habitAnswers.map((answer) => <option key={answer} value={answer}>Drinks: {answer}</option>)}
+                    </select>
+                  </div>
+                  <label className="mt-4 flex items-center gap-3 rounded-2xl bg-black/20 px-4 py-3 text-sm font-semibold text-white/80">
+                    <input type="checkbox" checked={soberDates} onChange={(event) => setSoberDates(event.target.checked)} />
+                    <span>Prefer sober first dates</span>
+                  </label>
                 </div>
                 <textarea value={bio} onChange={(event) => setBio(event.target.value)} placeholder="Write a bio that sounds like you." className={`${premiumFieldClass} min-h-36 resize-none`} />
                 <input value={interests} onChange={(event) => setInterests(event.target.value)} placeholder="Interests separated by commas" className={premiumFieldClass} />
