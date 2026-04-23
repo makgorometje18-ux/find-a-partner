@@ -2898,6 +2898,7 @@ function ChatPanel({
   const [messageSearch, setMessageSearch] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatReplyReference | null>(null);
   const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
+  const [messageMenuPosition, setMessageMenuPosition] = useState<{ top: number; left: number; side: "left" | "right" } | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showConversationMenu, setShowConversationMenu] = useState(false);
   const [forceSearchOpen, setForceSearchOpen] = useState(false);
@@ -2994,6 +2995,7 @@ function ChatPanel({
     onSend(replyingTo ? encodeChatReply(replyingTo, trimmedDraft) : trimmedDraft, true);
     setReplyingTo(null);
     setOpenActionsFor(null);
+    setMessageMenuPosition(null);
   };
 
   const closeMenuWithNotice = (notice: string) => {
@@ -3001,15 +3003,36 @@ function ChatPanel({
     setShowConversationMenu(false);
     setSelectedMessageId(null);
     setOpenActionsFor(null);
+    setMessageMenuPosition(null);
   };
 
-  const openMessageActions = (messageId: string) => {
+  const positionMessageMenu = (messageId: string, ownMessage: boolean) => {
+    const rect = messageRefs.current[messageId]?.getBoundingClientRect();
+    const menuWidth = 256;
+    const menuHeight = Math.min(384, Math.max(280, window.innerHeight - 120));
+    const viewportPadding = 12;
+    const headerPadding = 84;
+    const fallbackTop = Math.max(headerPadding, window.innerHeight / 2 - menuHeight / 2);
+    const preferredLeft = rect ? (ownMessage ? rect.right - menuWidth : rect.left) : viewportPadding;
+    const preferredTop = rect ? rect.top + Math.min(rect.height / 2, 18) : fallbackTop;
+    const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    const maxTop = Math.max(headerPadding, window.innerHeight - menuHeight - viewportPadding);
+
+    return {
+      top: Math.min(Math.max(headerPadding, preferredTop), maxTop),
+      left: Math.min(Math.max(viewportPadding, preferredLeft), maxLeft),
+      side: ownMessage ? "right" as const : "left" as const,
+    };
+  };
+
+  const openMessageActions = (messageId: string, ownMessage: boolean) => {
     setSelectedMessageId(messageId);
+    setMessageMenuPosition(positionMessageMenu(messageId, ownMessage));
     setOpenActionsFor(messageId);
   };
-  const openMessageActionsByLongPress = (messageId: string) => {
+  const openMessageActionsByLongPress = (messageId: string, ownMessage: boolean) => {
     messageOpenedByLongPressRef.current = true;
-    openMessageActions(messageId);
+    openMessageActions(messageId, ownMessage);
   };
   const clearMessageLongPress = () => {
     if (messageLongPressTimerRef.current !== null) {
@@ -3020,6 +3043,7 @@ function ChatPanel({
   const closeMessageActions = () => {
     setSelectedMessageId(null);
     setOpenActionsFor(null);
+    setMessageMenuPosition(null);
   };
   const moveSearch = (direction: 1 | -1) => {
     if (!searchMatchIds.length) return;
@@ -3326,6 +3350,23 @@ function ChatPanel({
     messageRefs.current[activeSearchMessageId]?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeSearchMessageId, forceSearchOpen]);
 
+  useEffect(() => {
+    if (!openActionsFor) return;
+    const scroller = messagesScrollerRef.current;
+    const dismissFloatingMenu = () => {
+      setSelectedMessageId(null);
+      setOpenActionsFor(null);
+      setMessageMenuPosition(null);
+    };
+
+    window.addEventListener("resize", dismissFloatingMenu);
+    scroller?.addEventListener("scroll", dismissFloatingMenu, { passive: true });
+    return () => {
+      window.removeEventListener("resize", dismissFloatingMenu);
+      scroller?.removeEventListener("scroll", dismissFloatingMenu);
+    };
+  }, [openActionsFor]);
+
   return (
     <div className="flex h-dvh min-h-0 w-full flex-col bg-[#071323] text-white lg:h-[calc(100dvh-3rem)] lg:max-w-6xl lg:overflow-hidden lg:rounded-[1.5rem] lg:border lg:border-white/10 lg:shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
       <div className="relative shrink-0 flex items-center gap-3 border-b border-white/10 bg-[#0b1728] px-4 py-3 shadow-sm">
@@ -3499,7 +3540,7 @@ function ChatPanel({
                 className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  openMessageActions(message.id);
+                  openMessageActions(message.id, isOwnMessage);
                 }}
               >
                 <div className={`max-w-[78%] ${isOwnMessage ? "items-end" : "items-start"} flex flex-col`}>
@@ -3509,7 +3550,7 @@ function ChatPanel({
                       const target = event.target as HTMLElement;
                       if (target.closest("button,a,input,audio,video")) return;
                       clearMessageLongPress();
-                      messageLongPressTimerRef.current = window.setTimeout(() => openMessageActionsByLongPress(message.id), 430);
+                      messageLongPressTimerRef.current = window.setTimeout(() => openMessageActionsByLongPress(message.id, isOwnMessage), 430);
                     }}
                     onPointerUp={clearMessageLongPress}
                     onPointerCancel={clearMessageLongPress}
@@ -3521,7 +3562,7 @@ function ChatPanel({
                       }
                       if (messageActionOpen) closeMessageActions();
                     }}
-                    onDoubleClick={() => openMessageActions(message.id)}
+                    onDoubleClick={() => openMessageActions(message.id, isOwnMessage)}
                   >
                   <div className={`${isOwnMessage ? "items-end" : "items-start"} flex min-w-0 flex-col`}>
                   {isChatImageMessage(messageBody) ? (
@@ -3606,9 +3647,17 @@ function ChatPanel({
                   )}
                   </div>
                   <div className="relative">
-                    {messageActionOpen ? (
-                      <div className={`absolute bottom-10 z-[120] ${isOwnMessage ? "right-0" : "left-0"}`} onClick={(event) => event.stopPropagation()}>
-                      <div className="max-h-[70dvh] w-64 overflow-y-auto rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,#162236,#0b1220)] p-2 text-sm font-semibold text-white shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_18px_55px_rgba(37,99,235,0.28),0_24px_70px_rgba(0,0,0,0.58)]">
+                    {messageActionOpen && messageMenuPosition ? (
+                      <div
+                        className="fixed z-[120] w-64"
+                        style={{ top: messageMenuPosition.top, left: messageMenuPosition.left }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                      <div className="relative max-h-[min(24rem,calc(100dvh-7rem))] overflow-y-auto rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,#162236,#0b1220)] p-2 text-sm font-semibold text-white shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_18px_55px_rgba(37,99,235,0.28),0_24px_70px_rgba(0,0,0,0.58)]">
+                        <span
+                          className={`absolute top-5 h-3 w-3 rotate-45 border border-white/12 bg-[#162236] ${messageMenuPosition.side === "right" ? "-right-1" : "-left-1"}`}
+                          aria-hidden="true"
+                        />
                         <div className="mb-1 flex items-center justify-between border-b border-white/10 px-2 pb-2">
                           <button type="button" onClick={closeMessageActions} className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/15">
                             Back
