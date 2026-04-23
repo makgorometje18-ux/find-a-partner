@@ -2500,8 +2500,8 @@ function ThumbIcon({ className = "h-6 w-6" }: { className?: string }) {
 
 function ReplyQuote({ reply, own }: { reply: ChatReplyReference; own: boolean }) {
   return (
-    <div className={`mb-2 rounded-xl border-l-4 px-3 py-2 text-left text-xs leading-5 ${own ? "border-emerald-300 bg-white/22" : "border-sky-300 bg-white/10"}`}>
-      <span className={`block font-black ${own ? "text-emerald-100" : "text-sky-200"}`}>{reply.senderName}</span>
+    <div className={`mb-2 rounded-xl border-l-4 px-3 py-2 text-left text-xs leading-5 ${own ? "border-sky-200 bg-white/12" : "border-sky-300 bg-white/10"}`}>
+      <span className="block font-black text-sky-100">{reply.senderName}</span>
       <span className="line-clamp-2 opacity-80">{reply.preview}</span>
     </div>
   );
@@ -2580,6 +2580,7 @@ function ChatPanel({
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showConversationMenu, setShowConversationMenu] = useState(false);
   const [forceSearchOpen, setForceSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [selectionMode, setSelectionMode] = useState(false);
   const [menuNotice, setMenuNotice] = useState("");
   const [deletedMessageIds, setDeletedMessageIds] = useState<string[]>([]);
@@ -2609,6 +2610,7 @@ function ChatPanel({
   const messageLongPressTimerRef = useRef<number | null>(null);
   const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const latestMessageKey = activeMessages.map((message) => `${message.id}:${message.read_at || ""}`).join("|");
   const normalizedSearch = messageSearch.trim().toLowerCase();
   const clearedAtMs = userControls.chatClearedAt ? new Date(userControls.chatClearedAt).getTime() : 0;
@@ -2616,12 +2618,17 @@ function ChatPanel({
     ? activeMessages.filter((message) => new Date(message.created_at).getTime() > clearedAtMs)
     : activeMessages;
   const availableMessages = visibleMessages.filter((message) => !deletedMessageIds.includes(message.id));
-  const shownMessages = normalizedSearch
-    ? availableMessages.filter((message) => {
-        const text = chatMessageText(message.body);
-        return !isChatImageMessage(text) && !isChatAudioMessage(text) && text.toLowerCase().includes(normalizedSearch);
-      })
-    : availableMessages;
+  const searchMatchIds = normalizedSearch
+    ? availableMessages
+        .filter((message) => {
+          const text = chatMessageText(message.body).toLowerCase();
+          return text.includes(normalizedSearch);
+        })
+        .map((message) => message.id)
+    : [];
+  const safeActiveSearchIndex = searchMatchIds.length ? Math.min(activeSearchIndex, searchMatchIds.length - 1) : 0;
+  const activeSearchMessageId = searchMatchIds[safeActiveSearchIndex] || "";
+  const shownMessages = availableMessages;
   const draftWarning = safetySettings.scamWarnings ? riskyMessageWarning(chatDraft) : "";
   const composerRows = Math.min(
     6,
@@ -2691,6 +2698,16 @@ function ChatPanel({
   const closeMessageActions = () => {
     setSelectedMessageId(null);
     setOpenActionsFor(null);
+  };
+  const moveSearch = (direction: 1 | -1) => {
+    if (!searchMatchIds.length) return;
+    setActiveSearchIndex((current) => {
+      const next = (current + direction + searchMatchIds.length) % searchMatchIds.length;
+      requestAnimationFrame(() => {
+        messageRefs.current[searchMatchIds[next]]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return next;
+    });
   };
   const sendStructuredAttachment = (body: string) => {
     onQuickSend(body);
@@ -2982,6 +2999,11 @@ function ChatPanel({
     scrollToLatestMessage();
   }, [latestMessageKey, isTyping]);
 
+  useEffect(() => {
+    if (!forceSearchOpen || !activeSearchMessageId) return;
+    messageRefs.current[activeSearchMessageId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeSearchMessageId, forceSearchOpen]);
+
   return (
     <div className="flex h-dvh min-h-0 w-full flex-col bg-[#071323] text-white lg:h-[calc(100dvh-3rem)] lg:max-w-6xl lg:overflow-hidden lg:rounded-[1.5rem] lg:border lg:border-white/10 lg:shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
       <div className="relative shrink-0 flex items-center gap-3 border-b border-white/10 bg-[#0b1728] px-4 py-3 shadow-sm">
@@ -3032,28 +3054,10 @@ function ChatPanel({
               <span className="w-4 text-center">i</span>
               <span>Contact info</span>
             </button>
-            <button type="button" onClick={() => safetySettings.chatSearch ? setForceSearchOpen((current) => !current) : closeMenuWithNotice("Chat search is turned off in profile settings.")} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
+            <button type="button" onClick={() => safetySettings.chatSearch ? (setForceSearchOpen(true), setShowConversationMenu(false)) : closeMenuWithNotice("Chat search is turned off in profile settings.")} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">⌕</span>
-              <span>{forceSearchOpen ? "Hide search" : "Search"}</span>
+              <span>Search</span>
             </button>
-            {forceSearchOpen && safetySettings.chatSearch ? (
-              <div className="px-3 pb-3">
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
-                  <input
-                    value={messageSearch}
-                    onChange={(event) => setMessageSearch(event.target.value)}
-                    autoFocus
-                    placeholder="Search messages"
-                    className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/45"
-                  />
-                </div>
-                {messageSearch ? (
-                  <button type="button" onClick={() => setMessageSearch("")} className="mt-2 text-xs font-bold text-white/55 hover:text-white">
-                    Clear search
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
             <button type="button" onClick={() => { setSelectionMode((current) => !current); setShowConversationMenu(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <span className="w-4 text-center">☑</span>
               <span>{selectionMode ? "Cancel selection" : "Select messages"}</span>
@@ -3099,6 +3103,41 @@ function ChatPanel({
         ) : null}
       </div>
 
+      {forceSearchOpen && safetySettings.chatSearch ? (
+        <div className="shrink-0 border-b border-white/10 bg-[#0b1728] px-3 py-2">
+          <div className="flex items-center gap-2 rounded-full bg-white/8 px-3 py-2 shadow-[0_10px_35px_rgba(0,0,0,0.25)]">
+            <button
+              type="button"
+              onClick={() => {
+                setForceSearchOpen(false);
+                setMessageSearch("");
+              }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-white/80 hover:bg-white/10"
+              aria-label="Close search"
+            >
+              &lt;
+            </button>
+            <input
+              value={messageSearch}
+              onChange={(event) => {
+                setMessageSearch(event.target.value);
+                setActiveSearchIndex(0);
+              }}
+              autoFocus
+              placeholder="Search"
+              className="min-w-0 flex-1 bg-transparent text-[16px] font-semibold text-white outline-none placeholder:text-white/45"
+            />
+            {normalizedSearch ? <span className="shrink-0 text-xs font-bold text-white/45">{searchMatchIds.length ? `${safeActiveSearchIndex + 1}/${searchMatchIds.length}` : "0/0"}</span> : null}
+            <button type="button" onClick={() => moveSearch(-1)} disabled={!searchMatchIds.length} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-white hover:bg-white/10 disabled:opacity-35" aria-label="Previous result">
+              ^
+            </button>
+            <button type="button" onClick={() => moveSearch(1)} disabled={!searchMatchIds.length} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-white hover:bg-white/10 disabled:opacity-35" aria-label="Next result">
+              v
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {menuNotice ? (
         <div className="shrink-0 border-b border-white/10 bg-[#0b1728] px-4 py-2">
           <div className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/76">
@@ -3120,6 +3159,9 @@ function ChatPanel({
             return (
               <div
                 key={message.id}
+                ref={(node) => {
+                  messageRefs.current[message.id] = node;
+                }}
                 className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -3128,7 +3170,7 @@ function ChatPanel({
               >
                 <div className={`max-w-[78%] ${isOwnMessage ? "items-end" : "items-start"} flex flex-col`}>
                   <div
-                    className={`group relative flex items-start gap-2 rounded-3xl transition ${selectedMessageId === message.id ? "bg-white/5 p-1" : ""} ${isOwnMessage ? "flex-row-reverse" : ""}`}
+                    className={`group relative flex items-start gap-2 rounded-3xl transition ${selectedMessageId === message.id || activeSearchMessageId === message.id ? "bg-sky-400/10 p-1 ring-1 ring-sky-300/30" : ""} ${isOwnMessage ? "flex-row-reverse" : ""}`}
                     onPointerDown={(event) => {
                       const target = event.target as HTMLElement;
                       if (target.closest("button,a,input,audio,video")) return;
@@ -3223,7 +3265,7 @@ function ChatPanel({
                       </div>
                     </div>
                   ) : (
-                    <div className={`break-words rounded-[1.35rem] px-4 py-3 text-sm leading-6 shadow-sm ${isOwnMessage ? "bg-[#d9fdd3] text-slate-950" : "bg-[#152238] text-white/90"}`}>
+                    <div className={`break-words rounded-[1.35rem] px-4 py-3 text-sm leading-6 shadow-sm ${isOwnMessage ? "bg-blue-600 text-white" : "bg-[#152238] text-white/90"}`}>
                       {reply ? <ReplyQuote reply={reply} own={isOwnMessage} /> : null}
                       {messageBody}
                     </div>
@@ -3231,8 +3273,8 @@ function ChatPanel({
                   </div>
                   <div className="relative">
                     {messageActionOpen ? (
-                      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/35 px-3 py-4 backdrop-blur-[2px] sm:items-center" onClick={closeMessageActions}>
-                      <div className="max-h-[82dvh] w-full max-w-[21rem] overflow-y-auto rounded-[1.6rem] border border-white/12 bg-[linear-gradient(180deg,#162236,#0b1220)] p-2 text-sm font-semibold text-white shadow-[0_28px_90px_rgba(0,0,0,0.62)]" onClick={(event) => event.stopPropagation()}>
+                      <div className={`absolute bottom-10 z-[120] ${isOwnMessage ? "right-0" : "left-0"}`} onClick={(event) => event.stopPropagation()}>
+                      <div className="max-h-[70dvh] w-64 overflow-y-auto rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,#162236,#0b1220)] p-2 text-sm font-semibold text-white shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_18px_55px_rgba(37,99,235,0.28),0_24px_70px_rgba(0,0,0,0.58)]">
                         <div className="mb-1 flex items-center justify-between border-b border-white/10 px-2 pb-2">
                           <button type="button" onClick={closeMessageActions} className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/15">
                             Back

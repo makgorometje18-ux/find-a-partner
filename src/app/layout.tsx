@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AudioController } from "@/components/audio-controller";
 import { NotificationBridge } from "@/components/notification-bridge";
 import "./globals.css";
 
@@ -19,7 +18,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {children}
         <NotificationBridge />
-        <AudioController />
       </body>
     </html>
   );
