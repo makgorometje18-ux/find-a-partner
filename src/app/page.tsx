@@ -2860,8 +2860,8 @@ function ExploreSectionSheet({
   onOpenProfile: (profile: DatingProfile) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[110] flex items-end bg-black/72 p-2 backdrop-blur sm:items-center sm:justify-center sm:p-6">
-      <div className="flex h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem]">
+    <div className="fixed inset-0 z-[110] bg-black/82 backdrop-blur sm:flex sm:items-center sm:justify-center sm:p-6">
+      <div className="flex h-dvh w-full flex-col overflow-hidden bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem] sm:max-w-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
         <div className={`bg-gradient-to-br ${section.themeClass} p-5`}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -2875,7 +2875,7 @@ function ExploreSectionSheet({
           </div>
           <p className="mt-4 inline-flex rounded-full bg-black/35 px-3 py-1 text-xs font-black text-white">{section.countLabel}</p>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3 sm:p-4">
           <div className="grid gap-3">
             {section.profiles.map((profile) => (
               <button
@@ -2943,9 +2943,9 @@ function ExploreProfileSheet({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="fixed inset-0 z-[115] flex items-end bg-black/78 p-2 backdrop-blur sm:items-center sm:justify-center sm:p-6">
+    <div className="fixed inset-0 z-[115] bg-black/84 backdrop-blur sm:flex sm:items-center sm:justify-center sm:p-6">
       <div
-        className="flex h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem]"
+        className="flex h-dvh w-full flex-col overflow-hidden bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem] sm:max-w-xl sm:rounded-[2rem] sm:border sm:border-white/10"
         onPointerDown={(event) => setDragStartX(event.clientX)}
         onPointerUp={(event) => {
           if (dragStartX === null) return;
@@ -2956,7 +2956,7 @@ function ExploreProfileSheet({
         }}
         onPointerCancel={() => setDragStartX(null)}
       >
-        <div className="relative h-72 shrink-0 bg-[#171a20]">
+        <div className="relative h-56 shrink-0 bg-[#171a20] sm:h-72">
           {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/20 to-transparent" />
           <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
@@ -2971,33 +2971,33 @@ function ExploreProfileSheet({
           <button type="button" onClick={onNext} className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl font-black text-white backdrop-blur">
             ›
           </button>
-          <div className="absolute bottom-0 left-0 right-0 p-5">
+          <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-black text-white/85">{profile.intent_lounge || "Explore"}</span>
               {isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-3 py-1 text-[11px] font-black text-slate-950">Verified</span> : null}
               {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-[11px] font-black text-emerald-100">{partnerLabel}</span> : null}
             </div>
-            <h3 className="mt-3 text-4xl font-black leading-none text-white">{profile.display_name}, {profile.age}</h3>
-            <p className="mt-2 text-base text-white/78">{profile.relationship_goal || "Open to seeing where this goes."}</p>
+            <h3 className="mt-3 text-[2.35rem] font-black leading-[0.95] text-white sm:text-4xl">{profile.display_name}, {profile.age}</h3>
+            <p className="mt-2 text-sm text-white/78 sm:text-base">{profile.relationship_goal || "Open to seeing where this goes."}</p>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-3 sm:p-5">
           <div className="flex flex-wrap gap-2">
             {detailChips.map((chip) => (
               <span key={chip} className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
             ))}
             <span className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">Trust points: {vouchCount}</span>
           </div>
-          <p className="mt-4 text-sm leading-7 text-white/78">{profile.bio}</p>
+          <p className="mt-3 text-sm leading-6 text-white/78">{profile.bio}</p>
           {profile.interests?.length ? (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {profile.interests.slice(0, 8).map((interest) => (
                 <span key={interest} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/72">{interest}</span>
               ))}
             </div>
           ) : null}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-auto grid gap-3 pt-4 sm:grid-cols-2">
             <button
               type="button"
               onClick={matched ? onOpenChat : onLike}
