@@ -2862,38 +2862,38 @@ function ExploreSectionSheet({
   return (
     <div className="fixed inset-0 z-[110] bg-black/82 backdrop-blur sm:flex sm:items-center sm:justify-center sm:p-6">
       <div className="flex h-dvh w-full flex-col overflow-hidden bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem] sm:max-w-2xl sm:rounded-[2rem] sm:border sm:border-white/10">
-        <div className={`bg-gradient-to-br ${section.themeClass} p-5`}>
+        <div className={`bg-gradient-to-br ${section.themeClass} px-4 pb-4 pt-3 sm:p-5`}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.26em] text-white/65">Explore</p>
-              <h3 className="mt-2 text-3xl font-black text-white">{section.title}</h3>
-              <p className="mt-2 text-sm text-white/82">{section.subtitle}</p>
+              <h3 className="mt-1 text-[2.1rem] font-black leading-[0.95] text-white sm:text-3xl">{section.title}</h3>
+              <p className="mt-2 max-w-[15rem] text-sm leading-6 text-white/82">{section.subtitle}</p>
             </div>
             <button type="button" onClick={onClose} className="rounded-full bg-black/35 px-4 py-2 text-sm font-black text-white">
               Back
             </button>
           </div>
-          <p className="mt-4 inline-flex rounded-full bg-black/35 px-3 py-1 text-xs font-black text-white">{section.countLabel}</p>
+          <p className="mt-3 inline-flex rounded-full bg-black/35 px-3 py-1 text-xs font-black text-white">{section.countLabel}</p>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3 sm:p-4">
-          <div className="grid gap-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 pt-2 sm:p-4">
+          <div className="grid gap-2.5">
             {section.profiles.map((profile) => (
               <button
                 key={profile.user_id}
                 type="button"
                 onClick={() => onOpenProfile(profile)}
-                className="flex w-full items-start gap-3 rounded-[1.6rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/8"
+                className="flex w-full items-start gap-3 rounded-[1.45rem] border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left transition hover:bg-white/8"
               >
-                <div className="h-20 w-16 shrink-0 overflow-hidden rounded-2xl bg-white/10">
+                <div className="h-[4.6rem] w-[3.7rem] shrink-0 overflow-hidden rounded-[1rem] bg-white/10">
                   {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <h4 className="min-w-0 break-words text-lg font-black leading-tight text-white">{profile.display_name}, {profile.age}</h4>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h4 className="min-w-0 flex-1 overflow-hidden text-ellipsis text-[1.05rem] font-black leading-tight text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{profile.display_name}, {profile.age}</h4>
                     {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
                   </div>
-                  <p className="mt-1 break-words text-sm leading-5 text-white/65">{fullProfileLocation(profile)}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
-                  <p className="mt-1 line-clamp-2 text-sm text-white/74">{profile.relationship_goal || profile.bio}</p>
+                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-5 text-white/62">{fullProfileLocation(profile)}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
+                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] text-white/78">{profile.relationship_goal || profile.bio}</p>
                 </div>
               </button>
             ))}
