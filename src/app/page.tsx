@@ -149,6 +149,13 @@ type VouchRow = {
   voucher_id: string;
   vouched_user_id: string;
 };
+type ExploreCardSize = "hero" | "tall" | "standard";
+type ExploreSection = {
+  title: string;
+  subtitle: string;
+  profiles: DatingProfile[];
+  sizes: ExploreCardSize[];
+};
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const schemaHelp = "Dating tables are missing or outdated. Run the latest SQL in supabase/dating_schema.sql, then try again.";
@@ -1193,6 +1200,74 @@ export default function PartnerScenePage() {
     setStatus(`Viewing ${profile.display_name}'s account from Explore.`);
   };
   const exploreProfiles = visiblePartnerProfiles.slice(0, 8);
+  const exploreProfileScore = (profile: DatingProfile) =>
+    (vouchCounts[profile.user_id] || 0) +
+    (likedMeIds.includes(profile.user_id) ? 200 : 0) +
+    (isProfileVerified(profile) ? 100 : 0) +
+    (profile.relationship_goal?.toLowerCase().includes("long") ? 40 : 0) +
+    (profile.intent_lounge === activeLounge ? 25 : 0);
+  const exploreSections = useMemo<ExploreSection[]>(() => {
+    if (!exploreProfiles.length) return [];
+
+    const sorted = [...exploreProfiles].sort((first, second) => exploreProfileScore(second) - exploreProfileScore(first));
+    const longTerm = sorted.filter((profile) => {
+      const goal = (profile.relationship_goal || "").toLowerCase();
+      return goal.includes("long") || goal.includes("serious") || goal.includes("marriage");
+    });
+    const social = sorted.filter((profile) => {
+      const goal = (profile.relationship_goal || "").toLowerCase();
+      return goal.includes("casual") || goal.includes("friend") || goal.includes("tonight") || goal.includes("social");
+    });
+    const remaining = sorted.filter((profile) => !longTerm.includes(profile) && !social.includes(profile));
+
+    const sections: ExploreSection[] = [
+      {
+        title: activeLounge === "Serious Relationship" ? "Serious Daters" : activeLounge,
+        subtitle: "Top profiles in your current lounge.",
+        profiles: sorted.slice(0, 3),
+        sizes: ["hero", "standard", "standard"],
+      },
+      {
+        title: "Long-term partner",
+        subtitle: "People looking for something steady.",
+        profiles: (longTerm.length ? longTerm : sorted.slice(1)).slice(0, 4),
+        sizes: ["tall", "tall", "standard", "standard"],
+      },
+      {
+        title: "Fresh connections",
+        subtitle: "A mix worth opening right now.",
+        profiles: (social.length ? social : remaining.length ? remaining : sorted).slice(0, 4),
+        sizes: ["standard", "standard", "standard", "standard"],
+      },
+    ];
+
+    const used = new Set<string>();
+    return sections
+      .map((section) => {
+        const uniqueProfiles = section.profiles.filter((profile) => {
+          if (used.has(profile.user_id)) return false;
+          used.add(profile.user_id);
+          return true;
+        });
+        return {
+          ...section,
+          profiles: uniqueProfiles,
+          sizes: section.sizes.slice(0, uniqueProfiles.length),
+        };
+      })
+      .filter((section) => section.profiles.length);
+  }, [activeLounge, exploreProfileScore, exploreProfiles, likedMeIds, vouchCounts]);
+  const selectedExploreIndex = selectedExploreProfile
+    ? exploreProfiles.findIndex((profile) => profile.user_id === selectedExploreProfile.user_id)
+    : -1;
+  const showPreviousExploreProfile = () => {
+    if (!exploreProfiles.length || selectedExploreIndex < 0) return;
+    setSelectedExploreProfile(exploreProfiles[(selectedExploreIndex - 1 + exploreProfiles.length) % exploreProfiles.length]);
+  };
+  const showNextExploreProfile = () => {
+    if (!exploreProfiles.length || selectedExploreIndex < 0) return;
+    setSelectedExploreProfile(exploreProfiles[(selectedExploreIndex + 1) % exploreProfiles.length]);
+  };
 
   const markMatchAsRead = (matchId: string) => {
     if (!player) return;
@@ -2211,17 +2286,30 @@ export default function PartnerScenePage() {
               soberDatesOnly={soberDatesOnly}
               onSoberDatesOnlyChange={setSoberDatesOnly}
             />
-            {exploreProfiles.length ? (
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                {exploreProfiles.map((profile, index) => (
-                  <ExploreSpotlightCard
-                    key={profile.user_id}
-                    profile={profile}
-                    distanceLabel={distanceForProfile(profile)}
-                    spotlight={index === 0}
-                    score={(vouchCounts[profile.user_id] || 0) + (likedMeIds.includes(profile.user_id) ? 200 : 0) + (isProfileVerified(profile) ? 100 : 0)}
-                    onOpen={() => openExploreProfile(profile)}
-                  />
+            {exploreSections.length ? (
+              <div className="mt-5 space-y-6">
+                {exploreSections.map((section) => (
+                  <div key={section.title}>
+                    <div className="mb-3 flex items-end justify-between gap-3">
+                      <div>
+                        <h3 className="text-2xl font-black text-white">{section.title}</h3>
+                        <p className="mt-1 text-sm text-white/60">{section.subtitle}</p>
+                      </div>
+                      <span className="rounded-full bg-white/8 px-3 py-1 text-[11px] font-black text-white/70">{section.profiles.length}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {section.profiles.map((profile, index) => (
+                        <ExploreSpotlightCard
+                          key={`${section.title}-${profile.user_id}`}
+                          profile={profile}
+                          distanceLabel={distanceForProfile(profile)}
+                          size={section.sizes[index] || "standard"}
+                          score={exploreProfileScore(profile)}
+                          onOpen={() => openExploreProfile(profile)}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -2235,9 +2323,12 @@ export default function PartnerScenePage() {
                 liked={likedIds.includes(selectedExploreProfile.user_id)}
                 saving={saving}
                 vouchCount={vouchCounts[selectedExploreProfile.user_id] || 0}
+                positionLabel={exploreProfiles.length && selectedExploreIndex >= 0 ? `${selectedExploreIndex + 1}/${exploreProfiles.length}` : ""}
                 onClose={() => setSelectedExploreProfile(null)}
                 onLike={() => void likeSpecificProfile(selectedExploreProfile)}
                 onOpenChat={() => openProfileChatFromExplore(selectedExploreProfile)}
+                onPrevious={showPreviousExploreProfile}
+                onNext={showNextExploreProfile}
               />
             ) : null}
           </section>
@@ -2665,17 +2756,19 @@ function DefaultExploreEmpty() {
 function ExploreSpotlightCard({
   profile,
   distanceLabel,
-  spotlight,
+  size,
   score,
   onOpen,
 }: {
   profile: DatingProfile;
   distanceLabel: string | null;
-  spotlight: boolean;
+  size: ExploreCardSize;
   score: number;
   onOpen: () => void;
 }) {
   const partnerLabel = officialPartnerLabel(profile);
+  const spotlight = size === "hero";
+  const isTall = size === "tall";
   const overlayTone = spotlight
     ? "from-[#b4482a]/80 via-[#682614]/55 to-[#100e12]/82"
     : score % 3 === 0
@@ -2688,13 +2781,13 @@ function ExploreSpotlightCard({
     <button
       type="button"
       onClick={onOpen}
-      className={`group relative overflow-hidden rounded-[1.8rem] border border-white/10 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:border-white/20 ${spotlight ? "col-span-2 min-h-[15rem]" : "min-h-[13rem]"}`}
+      className={`group relative overflow-hidden rounded-[1.8rem] border border-white/10 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:border-white/20 ${spotlight ? "col-span-2 min-h-[15rem]" : isTall ? "min-h-[16rem]" : "min-h-[13rem]"}`}
     >
       <div className="absolute inset-0 bg-[#15151d]">
         {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
       </div>
       <div className={`absolute inset-0 bg-gradient-to-t ${overlayTone}`} />
-      <div className={`relative flex h-full flex-col justify-between p-4 ${spotlight ? "min-h-[15rem]" : "min-h-[13rem]"}`}>
+      <div className={`relative flex h-full flex-col justify-between p-4 ${spotlight ? "min-h-[15rem]" : isTall ? "min-h-[16rem]" : "min-h-[13rem]"}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             {isProfileVerified(profile) ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
@@ -2704,8 +2797,8 @@ function ExploreSpotlightCard({
         </div>
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">{profile.intent_lounge || "Explore"}</p>
-          <h3 className={`mt-2 max-w-[12rem] font-black leading-tight text-white ${spotlight ? "text-[2rem]" : "text-[1.9rem]"}`}>{profile.display_name}</h3>
-          <p className="mt-1 text-lg font-medium text-white/92">{profile.relationship_goal || "Still figuring it out"}</p>
+          <h3 className={`mt-2 max-w-[12rem] font-black leading-tight text-white ${spotlight ? "text-[2rem]" : isTall ? "text-[2.1rem]" : "text-[1.9rem]"}`}>{profile.display_name}</h3>
+          <p className={`mt-1 font-medium text-white/92 ${spotlight ? "text-lg" : isTall ? "text-xl leading-7" : "text-lg"}`}>{profile.relationship_goal || "Still figuring it out"}</p>
           <p className="mt-2 text-sm text-white/78">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p>
         </div>
       </div>
@@ -2720,9 +2813,12 @@ function ExploreProfileSheet({
   liked,
   saving,
   vouchCount,
+  positionLabel,
   onClose,
   onLike,
   onOpenChat,
+  onPrevious,
+  onNext,
 }: {
   profile: DatingProfile;
   distanceLabel: string | null;
@@ -2730,10 +2826,14 @@ function ExploreProfileSheet({
   liked: boolean;
   saving: boolean;
   vouchCount: number;
+  positionLabel: string;
   onClose: () => void;
   onLike: () => void;
   onOpenChat: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
 }) {
+  const [dragStartX, setDragStartX] = useState<number | null>(null);
   const partnerLabel = officialPartnerLabel(profile);
   const detailChips = [
     profile.location_label || profile.city,
@@ -2746,12 +2846,32 @@ function ExploreProfileSheet({
 
   return (
     <div className="fixed inset-0 z-[88] flex items-end bg-black/70 p-3 backdrop-blur sm:items-center sm:justify-center sm:p-6">
-      <div className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]"
+        onPointerDown={(event) => setDragStartX(event.clientX)}
+        onPointerUp={(event) => {
+          if (dragStartX === null) return;
+          const delta = event.clientX - dragStartX;
+          if (delta > 50) onPrevious();
+          if (delta < -50) onNext();
+          setDragStartX(null);
+        }}
+        onPointerCancel={() => setDragStartX(null)}
+      >
         <div className="relative h-72 bg-[#171a20]">
           {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/20 to-transparent" />
           <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
             Back
+          </button>
+          <div className="absolute right-4 top-4 flex items-center gap-2">
+            {positionLabel ? <span className="rounded-full bg-black/55 px-3 py-2 text-xs font-black text-white/85">{positionLabel}</span> : null}
+          </div>
+          <button type="button" onClick={onPrevious} className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl font-black text-white backdrop-blur">
+            ‹
+          </button>
+          <button type="button" onClick={onNext} className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl font-black text-white backdrop-blur">
+            ›
           </button>
           <div className="absolute bottom-0 left-0 right-0 p-5">
             <div className="flex flex-wrap gap-2">
