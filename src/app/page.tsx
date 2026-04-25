@@ -149,12 +149,13 @@ type VouchRow = {
   voucher_id: string;
   vouched_user_id: string;
 };
-type ExploreCardSize = "hero" | "tall" | "standard";
 type ExploreSection = {
   title: string;
   subtitle: string;
+  countLabel: string;
+  themeClass: string;
+  featured?: boolean;
   profiles: DatingProfile[];
-  sizes: ExploreCardSize[];
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -410,6 +411,7 @@ export default function PartnerScenePage() {
   const [vouchCounts, setVouchCounts] = useState<Record<string, number>>({});
   const [vouchedIds, setVouchedIds] = useState<string[]>([]);
   const [matchCelebrationProfile, setMatchCelebrationProfile] = useState<DatingProfile | null>(null);
+  const [selectedExploreSectionTitle, setSelectedExploreSectionTitle] = useState<string | null>(null);
   const [selectedExploreProfile, setSelectedExploreProfile] = useState<DatingProfile | null>(null);
   const [callState, setCallState] = useState<CallState | null>(null);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
@@ -1199,7 +1201,11 @@ export default function PartnerScenePage() {
     setSelectedExploreProfile(profile);
     setStatus(`Viewing ${profile.display_name}'s account from Explore.`);
   };
-  const exploreProfiles = visiblePartnerProfiles.slice(0, 8);
+  const openExploreSection = (title: string) => {
+    setSelectedExploreSectionTitle(title);
+    setSelectedExploreProfile(null);
+  };
+  const exploreProfiles = visiblePartnerProfiles;
   const exploreProfileScore = (profile: DatingProfile) =>
     (vouchCounts[profile.user_id] || 0) +
     (likedMeIds.includes(profile.user_id) ? 200 : 0) +
@@ -1224,49 +1230,42 @@ export default function PartnerScenePage() {
       {
         title: activeLounge === "Serious Relationship" ? "Serious Daters" : activeLounge,
         subtitle: "Top profiles in your current lounge.",
-        profiles: sorted.slice(0, 3),
-        sizes: ["hero", "standard", "standard"],
+        countLabel: `${sorted.length} account${sorted.length === 1 ? "" : "s"}`,
+        themeClass: "from-[#9f4a32] via-[#582215] to-[#1a1417]",
+        featured: true,
+        profiles: sorted,
       },
       {
         title: "Long-term partner",
         subtitle: "People looking for something steady.",
-        profiles: (longTerm.length ? longTerm : sorted.slice(1)).slice(0, 4),
-        sizes: ["tall", "tall", "standard", "standard"],
+        countLabel: `${(longTerm.length ? longTerm : sorted).length} account${(longTerm.length ? longTerm : sorted).length === 1 ? "" : "s"}`,
+        themeClass: "from-[#5d2449] via-[#2c1730] to-[#17131c]",
+        profiles: longTerm.length ? longTerm : sorted,
       },
       {
         title: "Fresh connections",
         subtitle: "A mix worth opening right now.",
-        profiles: (social.length ? social : remaining.length ? remaining : sorted).slice(0, 4),
-        sizes: ["standard", "standard", "standard", "standard"],
+        countLabel: `${(social.length ? social : remaining.length ? remaining : sorted).length} account${(social.length ? social : remaining.length ? remaining : sorted).length === 1 ? "" : "s"}`,
+        themeClass: "from-[#745f10] via-[#3b2d16] to-[#171411]",
+        profiles: social.length ? social : remaining.length ? remaining : sorted,
       },
     ];
 
-    const used = new Set<string>();
-    return sections
-      .map((section) => {
-        const uniqueProfiles = section.profiles.filter((profile) => {
-          if (used.has(profile.user_id)) return false;
-          used.add(profile.user_id);
-          return true;
-        });
-        return {
-          ...section,
-          profiles: uniqueProfiles,
-          sizes: section.sizes.slice(0, uniqueProfiles.length),
-        };
-      })
-      .filter((section) => section.profiles.length);
+    return sections.filter((section) => section.profiles.length);
   }, [activeLounge, exploreProfileScore, exploreProfiles, likedMeIds, vouchCounts]);
-  const selectedExploreIndex = selectedExploreProfile
-    ? exploreProfiles.findIndex((profile) => profile.user_id === selectedExploreProfile.user_id)
+  const activeExploreSection = selectedExploreSectionTitle
+    ? exploreSections.find((section) => section.title === selectedExploreSectionTitle) || null
+    : null;
+  const selectedExploreIndex = selectedExploreProfile && activeExploreSection
+    ? activeExploreSection.profiles.findIndex((profile) => profile.user_id === selectedExploreProfile.user_id)
     : -1;
   const showPreviousExploreProfile = () => {
-    if (!exploreProfiles.length || selectedExploreIndex < 0) return;
-    setSelectedExploreProfile(exploreProfiles[(selectedExploreIndex - 1 + exploreProfiles.length) % exploreProfiles.length]);
+    if (!activeExploreSection?.profiles.length || selectedExploreIndex < 0) return;
+    setSelectedExploreProfile(activeExploreSection.profiles[(selectedExploreIndex - 1 + activeExploreSection.profiles.length) % activeExploreSection.profiles.length]);
   };
   const showNextExploreProfile = () => {
-    if (!exploreProfiles.length || selectedExploreIndex < 0) return;
-    setSelectedExploreProfile(exploreProfiles[(selectedExploreIndex + 1) % exploreProfiles.length]);
+    if (!activeExploreSection?.profiles.length || selectedExploreIndex < 0) return;
+    setSelectedExploreProfile(activeExploreSection.profiles[(selectedExploreIndex + 1) % activeExploreSection.profiles.length]);
   };
 
   const markMatchAsRead = (matchId: string) => {
@@ -1654,6 +1653,9 @@ export default function PartnerScenePage() {
 
   useEffect(() => {
     if (activeTab !== "explore") setSelectedExploreProfile(null);
+  }, [activeTab]);
+  useEffect(() => {
+    if (activeTab !== "explore") setSelectedExploreSectionTitle(null);
   }, [activeTab]);
 
   const advanceStack = () => setStackIndex((value) => (visiblePartnerProfiles.length ? (value + 1) % visiblePartnerProfiles.length : 0));
@@ -2290,31 +2292,28 @@ export default function PartnerScenePage() {
               <div className="mt-5 space-y-6">
                 {exploreSections.map((section) => (
                   <div key={section.title}>
-                    <div className="mb-3 flex items-end justify-between gap-3">
-                      <div>
-                        <h3 className="text-2xl font-black text-white">{section.title}</h3>
-                        <p className="mt-1 text-sm text-white/60">{section.subtitle}</p>
-                      </div>
-                      <span className="rounded-full bg-white/8 px-3 py-1 text-[11px] font-black text-white/70">{section.profiles.length}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {section.profiles.map((profile, index) => (
-                        <ExploreSpotlightCard
-                          key={`${section.title}-${profile.user_id}`}
-                          profile={profile}
-                          distanceLabel={distanceForProfile(profile)}
-                          size={section.sizes[index] || "standard"}
-                          score={exploreProfileScore(profile)}
-                          onOpen={() => openExploreProfile(profile)}
-                        />
-                      ))}
-                    </div>
+                    <ExploreCategoryCard
+                      title={section.title}
+                      subtitle={section.subtitle}
+                      countLabel={section.countLabel}
+                      themeClass={section.themeClass}
+                      featured={Boolean(section.featured)}
+                      onOpen={() => openExploreSection(section.title)}
+                    />
                   </div>
                 ))}
               </div>
             ) : (
               <DefaultExploreEmpty />
             )}
+            {activeExploreSection ? (
+              <ExploreSectionSheet
+                section={activeExploreSection}
+                distanceForProfile={distanceForProfile}
+                onClose={() => setSelectedExploreSectionTitle(null)}
+                onOpenProfile={(profile) => openExploreProfile(profile)}
+              />
+            ) : null}
             {selectedExploreProfile ? (
               <ExploreProfileSheet
                 profile={selectedExploreProfile}
@@ -2323,7 +2322,7 @@ export default function PartnerScenePage() {
                 liked={likedIds.includes(selectedExploreProfile.user_id)}
                 saving={saving}
                 vouchCount={vouchCounts[selectedExploreProfile.user_id] || 0}
-                positionLabel={exploreProfiles.length && selectedExploreIndex >= 0 ? `${selectedExploreIndex + 1}/${exploreProfiles.length}` : ""}
+                positionLabel={activeExploreSection?.profiles.length && selectedExploreIndex >= 0 ? `${selectedExploreIndex + 1}/${activeExploreSection.profiles.length}` : ""}
                 onClose={() => setSelectedExploreProfile(null)}
                 onLike={() => void likeSpecificProfile(selectedExploreProfile)}
                 onOpenChat={() => openProfileChatFromExplore(selectedExploreProfile)}
@@ -2753,56 +2752,97 @@ function DefaultExploreEmpty() {
   );
 }
 
-function ExploreSpotlightCard({
-  profile,
-  distanceLabel,
-  size,
-  score,
+function ExploreCategoryCard({
+  title,
+  subtitle,
+  countLabel,
+  themeClass,
+  featured,
   onOpen,
 }: {
-  profile: DatingProfile;
-  distanceLabel: string | null;
-  size: ExploreCardSize;
-  score: number;
+  title: string;
+  subtitle: string;
+  countLabel: string;
+  themeClass: string;
+  featured: boolean;
   onOpen: () => void;
 }) {
-  const partnerLabel = officialPartnerLabel(profile);
-  const spotlight = size === "hero";
-  const isTall = size === "tall";
-  const overlayTone = spotlight
-    ? "from-[#b4482a]/80 via-[#682614]/55 to-[#100e12]/82"
-    : score % 3 === 0
-      ? "from-[#6e244d]/82 via-[#32112c]/55 to-[#100e12]/84"
-      : score % 2 === 0
-        ? "from-[#4b1f84]/82 via-[#261542]/55 to-[#100e12]/84"
-        : "from-[#8f6b0d]/82 via-[#4a3611]/55 to-[#100e12]/84";
-
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`group relative overflow-hidden rounded-[1.8rem] border border-white/10 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:border-white/20 ${spotlight ? "col-span-2 min-h-[15rem]" : isTall ? "min-h-[16rem]" : "min-h-[13rem]"}`}
+      className={`group relative w-full overflow-hidden rounded-[1.8rem] border border-white/10 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:border-white/20 ${featured ? "min-h-[15rem]" : "min-h-[12rem]"}`}
     >
-      <div className="absolute inset-0 bg-[#15151d]">
-        {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
-      </div>
-      <div className={`absolute inset-0 bg-gradient-to-t ${overlayTone}`} />
-      <div className={`relative flex h-full flex-col justify-between p-4 ${spotlight ? "min-h-[15rem]" : isTall ? "min-h-[16rem]" : "min-h-[13rem]"}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {isProfileVerified(profile) ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
-            {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-2.5 py-1 text-[10px] font-black text-emerald-100">Taken</span> : null}
-          </div>
-          <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-black text-white">#{Math.max(18, score || 18)}</span>
+      <div className={`absolute inset-0 bg-gradient-to-br ${themeClass}`} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_24%,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.12),transparent_24%),linear-gradient(135deg,transparent_0%,rgba(0,0,0,0.12)_42%,rgba(0,0,0,0.45)_100%)]" />
+      <div className="absolute -bottom-8 left-5 h-24 w-24 rounded-full border border-white/12 bg-white/8 blur-[1px]" />
+      <div className="absolute -right-6 top-8 h-20 w-20 rounded-full border border-white/10 bg-black/10" />
+      <div className={`relative flex h-full flex-col justify-between p-4 ${featured ? "min-h-[15rem]" : "min-h-[12rem]"}`}>
+        <div className="flex justify-end">
+          <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-black text-white">{countLabel}</span>
         </div>
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">{profile.intent_lounge || "Explore"}</p>
-          <h3 className={`mt-2 max-w-[12rem] font-black leading-tight text-white ${spotlight ? "text-[2rem]" : isTall ? "text-[2.1rem]" : "text-[1.9rem]"}`}>{profile.display_name}</h3>
-          <p className={`mt-1 font-medium text-white/92 ${spotlight ? "text-lg" : isTall ? "text-xl leading-7" : "text-lg"}`}>{profile.relationship_goal || "Still figuring it out"}</p>
-          <p className="mt-2 text-sm text-white/78">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p>
+          <h3 className={`max-w-[12rem] font-black leading-tight text-white ${featured ? "text-[2rem]" : "text-[1.9rem]"}`}>{title}</h3>
+          <p className="mt-2 max-w-sm text-sm leading-6 text-white/88">{subtitle}</p>
         </div>
       </div>
     </button>
+  );
+}
+
+function ExploreSectionSheet({
+  section,
+  distanceForProfile,
+  onClose,
+  onOpenProfile,
+}: {
+  section: ExploreSection;
+  distanceForProfile: (profile?: DatingProfile | null) => string | null;
+  onClose: () => void;
+  onOpenProfile: (profile: DatingProfile) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[86] flex items-end bg-black/65 p-3 backdrop-blur sm:items-center sm:justify-center sm:p-6">
+      <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+        <div className={`bg-gradient-to-br ${section.themeClass} p-5`}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.26em] text-white/65">Explore</p>
+              <h3 className="mt-2 text-3xl font-black text-white">{section.title}</h3>
+              <p className="mt-2 text-sm text-white/82">{section.subtitle}</p>
+            </div>
+            <button type="button" onClick={onClose} className="rounded-full bg-black/35 px-4 py-2 text-sm font-black text-white">
+              Back
+            </button>
+          </div>
+          <p className="mt-4 inline-flex rounded-full bg-black/35 px-3 py-1 text-xs font-black text-white">{section.countLabel}</p>
+        </div>
+        <div className="max-h-[68dvh] overflow-y-auto p-4">
+          <div className="grid gap-3">
+            {section.profiles.map((profile) => (
+              <button
+                key={profile.user_id}
+                type="button"
+                onClick={() => onOpenProfile(profile)}
+                className="flex w-full items-center gap-3 rounded-[1.6rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/8"
+              >
+                <div className="h-20 w-16 overflow-hidden rounded-2xl bg-white/10">
+                  {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h4 className="truncate text-lg font-black text-white">{profile.display_name}, {profile.age}</h4>
+                    {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm text-white/65">{profile.location_label || profile.city}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-white/74">{profile.relationship_goal || profile.bio}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
