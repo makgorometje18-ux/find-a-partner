@@ -153,7 +153,6 @@ type VouchRow = {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const schemaHelp = "Dating tables are missing or outdated. Run the latest SQL in supabase/dating_schema.sql, then try again.";
 const sortPair = (first: string, second: string) => (first < second ? [first, second] : [second, first]);
-const goalPalette = ["from-rose-500/80 to-orange-400/80", "from-fuchsia-700/80 to-purple-500/80", "from-amber-400/80 to-yellow-500/80"];
 const summaryKey = (userId: string) => `dating-notification-summary:${userId}`;
 const safetySettingsKey = (userId: string) => `dating-safety-settings:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
@@ -404,6 +403,7 @@ export default function PartnerScenePage() {
   const [vouchCounts, setVouchCounts] = useState<Record<string, number>>({});
   const [vouchedIds, setVouchedIds] = useState<string[]>([]);
   const [matchCelebrationProfile, setMatchCelebrationProfile] = useState<DatingProfile | null>(null);
+  const [selectedExploreProfile, setSelectedExploreProfile] = useState<DatingProfile | null>(null);
   const [callState, setCallState] = useState<CallState | null>(null);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
   const [remoteCallStream, setRemoteCallStream] = useState<MediaStream | null>(null);
@@ -1180,6 +1180,18 @@ export default function PartnerScenePage() {
     setActiveMatchId(match.id);
     setActiveTab("chat");
   };
+  const matchForProfile = (profile?: DatingProfile | null) =>
+    profile
+      ? matches.find(
+          (match) =>
+            (match.user_a === player?.id && match.user_b === profile.user_id) ||
+            (match.user_b === player?.id && match.user_a === profile.user_id)
+        ) || null
+      : null;
+  const openExploreProfile = (profile: DatingProfile) => {
+    setSelectedExploreProfile(profile);
+    setStatus(`Viewing ${profile.display_name}'s account from Explore.`);
+  };
   const exploreProfiles = visiblePartnerProfiles.slice(0, 8);
 
   const markMatchAsRead = (matchId: string) => {
@@ -1496,20 +1508,6 @@ export default function PartnerScenePage() {
     };
   }, [matches, player, profileMap]);
 
-  const goalCards = useMemo(() => {
-    const counts = profiles.reduce<Record<string, number>>((accumulator, profile) => {
-      const key = profile.relationship_goal || "Still figuring it out";
-      accumulator[key] = (accumulator[key] || 0) + 1;
-      return accumulator;
-    }, {});
-
-    return Object.entries(counts).map(([goal, count], index) => ({
-      goal,
-      count,
-      palette: goalPalette[index % goalPalette.length],
-    }));
-  }, [profiles]);
-
   useEffect(() => {
     if (typeof window === "undefined" || !player || Notification.permission !== "granted") return;
 
@@ -1579,6 +1577,10 @@ export default function PartnerScenePage() {
     window.localStorage.setItem(summaryKey(player.id), JSON.stringify(summary));
   }, [likedMeIds.length, matches, messages, player, profileMap, safetySettings.messageNotifications, safetySettings.quietMode, userControls]);
 
+  useEffect(() => {
+    if (activeTab !== "explore") setSelectedExploreProfile(null);
+  }, [activeTab]);
+
   const advanceStack = () => setStackIndex((value) => (visiblePartnerProfiles.length ? (value + 1) % visiblePartnerProfiles.length : 0));
 
   const passProfile = () => {
@@ -1588,15 +1590,15 @@ export default function PartnerScenePage() {
     advanceStack();
   };
 
-  const likeProfile = async (superLike = false) => {
-    if (!currentProfile || !player) return;
+  const likeSpecificProfile = async (profile: DatingProfile, superLike = false) => {
+    if (!player) return;
     setSaving(true);
     setError("");
 
     try {
       const { error: likeError } = await supabase.from("dating_likes").insert({
         liker_id: player.id,
-        liked_user_id: currentProfile.user_id,
+        liked_user_id: profile.user_id,
       });
 
       const alreadyLiked =
@@ -1605,8 +1607,7 @@ export default function PartnerScenePage() {
 
       if (likeError && !alreadyLiked) {
         console.warn("Dating like could not be saved", likeError);
-        setStatus(`Could not save the like for ${currentProfile.display_name}, showing the next account.`);
-        advanceStack();
+        setStatus(`Could not save the like for ${profile.display_name} right now.`);
         setSaving(false);
         return;
       }
@@ -1614,22 +1615,21 @@ export default function PartnerScenePage() {
       const { data: mutualLike, error: mutualError } = await supabase
         .from("dating_likes")
         .select("liker_id")
-        .eq("liker_id", currentProfile.user_id)
+        .eq("liker_id", profile.user_id)
         .eq("liked_user_id", player.id)
         .maybeSingle();
 
       if (mutualError) {
         console.warn("Could not check mutual like", mutualError);
-        setStatus(`You liked ${currentProfile.display_name}. Showing the next account.`);
-        advanceStack();
+        setStatus(`You liked ${profile.display_name}.`);
         setSaving(false);
         return;
       }
 
-      setLikedIds((current) => [...current, currentProfile.user_id]);
+      setLikedIds((current) => [...new Set([...current, profile.user_id])]);
 
       if (mutualLike) {
-        const [userA, userB] = sortPair(player.id, currentProfile.user_id);
+        const [userA, userB] = sortPair(player.id, profile.user_id);
         const { data: matchRow, error: matchInsertError } = await supabase
           .from("dating_matches")
           .upsert({ user_a: userA, user_b: userB }, { onConflict: "user_a,user_b" })
@@ -1638,19 +1638,19 @@ export default function PartnerScenePage() {
 
         if (matchInsertError) {
           console.warn("Could not create dating match", matchInsertError);
-          setStatus(`You liked ${currentProfile.display_name}. Showing the next account.`);
-          advanceStack();
+          setStatus(`You liked ${profile.display_name}.`);
           setSaving(false);
           return;
         }
 
-        setStatus(`It is a match with ${currentProfile.display_name}. You can start chatting now.`);
-        setMatchCelebrationProfile(currentProfile);
-        advanceStack();
+        setStatus(`It is a match with ${profile.display_name}. You can start chatting now.`);
+        setMatchCelebrationProfile(profile);
+        setSelectedExploreProfile(profile);
+        if (currentProfile?.user_id === profile.user_id) advanceStack();
         await loadScene(matchRow?.id);
       } else {
-        setStatus(superLike ? `You gave ${currentProfile.display_name} a strong like.` : `You liked ${currentProfile.display_name}.`);
-        advanceStack();
+        setStatus(superLike ? `You gave ${profile.display_name} a strong like.` : `You liked ${profile.display_name}.`);
+        if (currentProfile?.user_id === profile.user_id) advanceStack();
       }
     } catch (likeError) {
       console.error("Dating like failed", likeError);
@@ -1658,6 +1658,19 @@ export default function PartnerScenePage() {
     } finally {
       setSaving(false);
     }
+  };
+  const likeProfile = async (superLike = false) => {
+    if (!currentProfile) return;
+    await likeSpecificProfile(currentProfile, superLike);
+  };
+  const openProfileChatFromExplore = (profile: DatingProfile) => {
+    const match = matchForProfile(profile);
+    if (!match) {
+      setStatus(`You need a mutual match with ${profile.display_name} before opening chat.`);
+      return;
+    }
+    setSelectedExploreProfile(null);
+    openMatchChat(match);
   };
 
   const sendMessage = async (quickBody?: string, clearDraftOverride?: boolean) => {
@@ -2183,7 +2196,7 @@ export default function PartnerScenePage() {
         {activeTab === "explore" ? (
           <section className="rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur">
             <p className="text-sm uppercase tracking-[0.3em] text-white/50">Explore</p>
-            <h2 className="mt-2 text-3xl font-bold">Relationship goals</h2>
+            <h2 className="mt-2 text-3xl font-bold">Find your people</h2>
             <DiscoveryControls
               activeLounge={activeLounge}
               onLoungeChange={setActiveLounge}
@@ -2198,8 +2211,35 @@ export default function PartnerScenePage() {
               soberDatesOnly={soberDatesOnly}
               onSoberDatesOnlyChange={setSoberDatesOnly}
             />
-            <div className="mt-5 grid grid-cols-2 gap-3">{goalCards.length ? goalCards.map((card, index) => <GoalCard key={card.goal} goal={card.goal} count={card.count} palette={card.palette} featured={index === 0} />) : <DefaultExploreEmpty />}</div>
-            <div className="mt-6 space-y-3">{exploreProfiles.map((profile) => <ExploreRow key={profile.user_id} profile={profile} distanceLabel={distanceForProfile(profile)} />)}</div>
+            {exploreProfiles.length ? (
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                {exploreProfiles.map((profile, index) => (
+                  <ExploreSpotlightCard
+                    key={profile.user_id}
+                    profile={profile}
+                    distanceLabel={distanceForProfile(profile)}
+                    spotlight={index === 0}
+                    score={(vouchCounts[profile.user_id] || 0) + (likedMeIds.includes(profile.user_id) ? 200 : 0) + (isProfileVerified(profile) ? 100 : 0)}
+                    onOpen={() => openExploreProfile(profile)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <DefaultExploreEmpty />
+            )}
+            {selectedExploreProfile ? (
+              <ExploreProfileSheet
+                profile={selectedExploreProfile}
+                distanceLabel={distanceForProfile(selectedExploreProfile)}
+                matched={Boolean(matchForProfile(selectedExploreProfile))}
+                liked={likedIds.includes(selectedExploreProfile.user_id)}
+                saving={saving}
+                vouchCount={vouchCounts[selectedExploreProfile.user_id] || 0}
+                onClose={() => setSelectedExploreProfile(null)}
+                onLike={() => void likeSpecificProfile(selectedExploreProfile)}
+                onOpenChat={() => openProfileChatFromExplore(selectedExploreProfile)}
+              />
+            ) : null}
           </section>
         ) : null}
 
@@ -2612,18 +2652,6 @@ function DiscoveryControls({
   );
 }
 
-function GoalCard({ goal, count, palette, featured }: { goal: string; count: number; palette: string; featured: boolean }) {
-  return (
-    <div className={`rounded-[1.8rem] bg-gradient-to-br ${palette} p-4 ${featured ? "col-span-2 min-h-44" : "min-h-36"}`}>
-      <div className="flex justify-end"><span className="rounded-full bg-black/35 px-2 py-1 text-xs font-semibold">{count}</span></div>
-      <div className={featured ? "mt-12" : "mt-10"}>
-        <h3 className={`${featured ? "text-3xl" : "text-2xl"} font-black`}>{goal}</h3>
-        {featured ? <p className="mt-2 text-sm text-white/85">Find people with similar relationship goals.</p> : null}
-      </div>
-    </div>
-  );
-}
-
 function DefaultExploreEmpty() {
   return (
     <>
@@ -2634,9 +2662,144 @@ function DefaultExploreEmpty() {
   );
 }
 
-function ExploreRow({ profile, distanceLabel }: { profile: DatingProfile; distanceLabel: string | null }) {
+function ExploreSpotlightCard({
+  profile,
+  distanceLabel,
+  spotlight,
+  score,
+  onOpen,
+}: {
+  profile: DatingProfile;
+  distanceLabel: string | null;
+  spotlight: boolean;
+  score: number;
+  onOpen: () => void;
+}) {
   const partnerLabel = officialPartnerLabel(profile);
-  return <div className="flex gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3"><div className="h-24 w-20 overflow-hidden rounded-2xl bg-white/10">{profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="truncate text-xl font-bold">{profile.display_name}, {profile.age}</h3>{isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}{partnerLabel ? <span className="rounded-full bg-emerald-400/15 px-2 py-1 text-[10px] font-bold text-emerald-100">Taken</span> : null}</div><p className="mt-1 text-sm text-white/65">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p><p className="mt-2 line-clamp-2 text-sm text-white/75">{partnerLabel || profile.relationship_goal || "Still figuring it out"}</p></div></div>;
+  const overlayTone = spotlight
+    ? "from-[#b4482a]/80 via-[#682614]/55 to-[#100e12]/82"
+    : score % 3 === 0
+      ? "from-[#6e244d]/82 via-[#32112c]/55 to-[#100e12]/84"
+      : score % 2 === 0
+        ? "from-[#4b1f84]/82 via-[#261542]/55 to-[#100e12]/84"
+        : "from-[#8f6b0d]/82 via-[#4a3611]/55 to-[#100e12]/84";
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`group relative overflow-hidden rounded-[1.8rem] border border-white/10 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:border-white/20 ${spotlight ? "col-span-2 min-h-[15rem]" : "min-h-[13rem]"}`}
+    >
+      <div className="absolute inset-0 bg-[#15151d]">
+        {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+      </div>
+      <div className={`absolute inset-0 bg-gradient-to-t ${overlayTone}`} />
+      <div className={`relative flex h-full flex-col justify-between p-4 ${spotlight ? "min-h-[15rem]" : "min-h-[13rem]"}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {isProfileVerified(profile) ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
+            {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-2.5 py-1 text-[10px] font-black text-emerald-100">Taken</span> : null}
+          </div>
+          <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-black text-white">#{Math.max(18, score || 18)}</span>
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">{profile.intent_lounge || "Explore"}</p>
+          <h3 className={`mt-2 max-w-[12rem] font-black leading-tight text-white ${spotlight ? "text-[2rem]" : "text-[1.9rem]"}`}>{profile.display_name}</h3>
+          <p className="mt-1 text-lg font-medium text-white/92">{profile.relationship_goal || "Still figuring it out"}</p>
+          <p className="mt-2 text-sm text-white/78">{profile.location_label || profile.city}{distanceLabel ? ` - ${distanceLabel}` : ""}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ExploreProfileSheet({
+  profile,
+  distanceLabel,
+  matched,
+  liked,
+  saving,
+  vouchCount,
+  onClose,
+  onLike,
+  onOpenChat,
+}: {
+  profile: DatingProfile;
+  distanceLabel: string | null;
+  matched: boolean;
+  liked: boolean;
+  saving: boolean;
+  vouchCount: number;
+  onClose: () => void;
+  onLike: () => void;
+  onOpenChat: () => void;
+}) {
+  const partnerLabel = officialPartnerLabel(profile);
+  const detailChips = [
+    profile.location_label || profile.city,
+    distanceLabel,
+    profile.wants_kids ? `Kids: ${profile.wants_kids}` : null,
+    profile.smokes ? `Smokes: ${profile.smokes}` : null,
+    profile.drinks ? `Drinks: ${profile.drinks}` : null,
+    profile.sober_dates ? "Sober dates" : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    <div className="fixed inset-0 z-[88] flex items-end bg-black/70 p-3 backdrop-blur sm:items-center sm:justify-center sm:p-6">
+      <div className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+        <div className="relative h-72 bg-[#171a20]">
+          {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/20 to-transparent" />
+          <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
+            Back
+          </button>
+          <div className="absolute bottom-0 left-0 right-0 p-5">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-black text-white/85">{profile.intent_lounge || "Explore"}</span>
+              {isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-3 py-1 text-[11px] font-black text-slate-950">Verified</span> : null}
+              {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-[11px] font-black text-emerald-100">{partnerLabel}</span> : null}
+            </div>
+            <h3 className="mt-3 text-4xl font-black leading-none text-white">{profile.display_name}, {profile.age}</h3>
+            <p className="mt-2 text-base text-white/78">{profile.relationship_goal || "Open to seeing where this goes."}</p>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="flex flex-wrap gap-2">
+            {detailChips.map((chip) => (
+              <span key={chip} className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
+            ))}
+            <span className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">Trust points: {vouchCount}</span>
+          </div>
+          <p className="mt-4 text-sm leading-7 text-white/78">{profile.bio}</p>
+          {profile.interests?.length ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {profile.interests.slice(0, 8).map((interest) => (
+                <span key={interest} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/72">{interest}</span>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={matched ? onOpenChat : onLike}
+              disabled={saving || liked || Boolean(partnerLabel && !matched)}
+              className="rounded-full bg-blue-600 px-5 py-4 text-sm font-black text-white transition hover:bg-blue-500 disabled:opacity-60"
+            >
+              {matched ? "Open Chat" : liked ? "Liked" : "Like Profile"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/12 bg-white/5 px-5 py-4 text-sm font-black text-white transition hover:bg-white/10"
+            >
+              Keep Exploring
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatBox({ label, value }: { label: string; value: number }) {
