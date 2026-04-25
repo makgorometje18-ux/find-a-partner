@@ -2933,13 +2933,14 @@ function ExploreProfileSheet({
 }) {
   const [dragStartX, setDragStartX] = useState<number | null>(null);
   const partnerLabel = officialPartnerLabel(profile);
+  const locationChip = [fullProfileLocation(profile), distanceLabel].filter(Boolean).join("  ");
   const detailChips = [
-    fullProfileLocation(profile),
-    distanceLabel,
+    locationChip,
     profile.wants_kids ? `Kids: ${profile.wants_kids}` : null,
     profile.smokes ? `Smokes: ${profile.smokes}` : null,
     profile.drinks ? `Drinks: ${profile.drinks}` : null,
     profile.sober_dates ? "Sober dates" : null,
+    `Trust points: ${vouchCount}`,
   ].filter(Boolean) as string[];
 
   return (
@@ -2956,48 +2957,47 @@ function ExploreProfileSheet({
         }}
         onPointerCancel={() => setDragStartX(null)}
       >
-        <div className="relative h-56 shrink-0 bg-[#171a20] sm:h-72">
+        <div className="relative h-52 shrink-0 bg-[#171a20] sm:h-72">
           {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/18 to-transparent" />
           <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
             Back
           </button>
           <div className="absolute right-4 top-4 flex items-center gap-2">
             {positionLabel ? <span className="rounded-full bg-black/55 px-3 py-2 text-xs font-black text-white/85">{positionLabel}</span> : null}
           </div>
-          <button type="button" onClick={onPrevious} className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl font-black text-white backdrop-blur">
+          <button type="button" onClick={onPrevious} className="absolute right-14 top-[5.1rem] flex h-9 w-9 items-center justify-center rounded-full bg-black/48 text-xl font-black text-white backdrop-blur">
             ‹
           </button>
-          <button type="button" onClick={onNext} className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl font-black text-white backdrop-blur">
+          <button type="button" onClick={onNext} className="absolute right-4 top-[5.1rem] flex h-9 w-9 items-center justify-center rounded-full bg-black/48 text-xl font-black text-white backdrop-blur">
             ›
           </button>
-          <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
+          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-black text-white/85">{profile.intent_lounge || "Explore"}</span>
               {isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-3 py-1 text-[11px] font-black text-slate-950">Verified</span> : null}
               {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-[11px] font-black text-emerald-100">{partnerLabel}</span> : null}
             </div>
-            <h3 className="mt-3 text-[2.35rem] font-black leading-[0.95] text-white sm:text-4xl">{profile.display_name}, {profile.age}</h3>
-            <p className="mt-2 text-sm text-white/78 sm:text-base">{profile.relationship_goal || "Open to seeing where this goes."}</p>
+            <h3 className="mt-3 max-w-[85%] text-[2.2rem] font-black leading-[0.92] text-white sm:text-4xl">{profile.display_name}, {profile.age}</h3>
+            <p className="mt-2 text-base text-white/82">{profile.relationship_goal || "Open to seeing where this goes."}</p>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-3 sm:p-5">
           <div className="flex flex-wrap gap-2">
             {detailChips.map((chip) => (
-              <span key={chip} className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
+              <span key={chip} className="rounded-full bg-white/8 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
             ))}
-            <span className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">Trust points: {vouchCount}</span>
           </div>
-          <p className="mt-3 text-sm leading-6 text-white/78">{profile.bio}</p>
+          <p className="mt-4 text-[15px] leading-6 text-white/80">{profile.bio}</p>
           {profile.interests?.length ? (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               {profile.interests.slice(0, 8).map((interest) => (
                 <span key={interest} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/72">{interest}</span>
               ))}
             </div>
           ) : null}
-          <div className="mt-auto grid gap-3 pt-4 sm:grid-cols-2">
+          <div className="mt-auto grid gap-3 pt-5">
             <button
               type="button"
               onClick={matched ? onOpenChat : onLike}
