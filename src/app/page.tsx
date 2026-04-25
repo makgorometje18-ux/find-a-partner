@@ -38,6 +38,7 @@ type DatingProfile = {
   display_name: string;
   age: number;
   city: string;
+  country?: string | null;
   bio: string;
   interests: string[] | null;
   photo_url: string | null;
@@ -94,7 +95,7 @@ type DatingReportRow = {
 
 type AppTab = "swipe" | "explore" | "likes" | "chat" | "profile";
 type CallKind = "voice" | "video";
-type CallStatus = "idle" | "calling" | "incoming" | "connecting" | "connected";
+type CallStatus = "idle" | "calling" | "ringing" | "incoming" | "connecting" | "connected";
 type PartnerSafetySettings = {
   messageNotifications: boolean;
   quietMode: boolean;
@@ -313,6 +314,21 @@ const riskyMessageWarning = (body: string) => {
     ? "Be careful: never share passwords, OTP codes, banking details, or money with someone you just met."
     : "";
 };
+const fullProfileLocation = (profile?: DatingProfile | null) => {
+  if (!profile) return "";
+  const rawParts = [profile.country, profile.city, profile.location_label]
+    .flatMap((value) => (value || "").split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const parts = rawParts.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return parts.join(" · ") || profile.location_label || profile.city || profile.country || "";
+};
 const formatLastSeen = (value?: string | null) => {
   const date = value ? new Date(value) : null;
   const safeDate = date && !Number.isNaN(date.getTime()) ? date : new Date();
@@ -414,6 +430,7 @@ export default function PartnerScenePage() {
   const [selectedExploreSectionTitle, setSelectedExploreSectionTitle] = useState<string | null>(null);
   const [selectedExploreProfile, setSelectedExploreProfile] = useState<DatingProfile | null>(null);
   const [callState, setCallState] = useState<CallState | null>(null);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
   const [remoteCallStream, setRemoteCallStream] = useState<MediaStream | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
@@ -429,6 +446,7 @@ export default function PartnerScenePage() {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneIntervalRef = useRef<number | null>(null);
+  const callTimerRef = useRef<number | null>(null);
   const broadcastTypingState = (isTyping: boolean, force = false) => {
     if (!player || !activeMatchId || !typingChannelRef.current) return;
 
@@ -643,8 +661,14 @@ export default function PartnerScenePage() {
       if (presenceIds.length) {
         const { data: presenceRows } = await supabase
           .from("players")
-          .select("id, is_online, updated_at")
+          .select("id, is_online, updated_at, country")
           .in("id", presenceIds);
+
+        ((presenceRows || []) as Array<{ id: string; is_online: boolean | null; updated_at: string | null; country?: string | null }>).forEach((row) => {
+          if (nextMap[row.id]) {
+            nextMap[row.id] = { ...nextMap[row.id], country: row.country || nextMap[row.id].country || null };
+          }
+        });
 
         nextPresenceMap = ((presenceRows || []) as Array<{ id: string; is_online: boolean | null; updated_at: string | null }>).reduce<Record<string, PlayerPresence>>(
           (accumulator, row) => {
@@ -1256,6 +1280,7 @@ export default function PartnerScenePage() {
   const activeExploreSection = selectedExploreSectionTitle
     ? exploreSections.find((section) => section.title === selectedExploreSectionTitle) || null
     : null;
+  const hasExploreOverlay = activeTab === "explore" && (Boolean(activeExploreSection) || Boolean(selectedExploreProfile));
   const selectedExploreIndex = selectedExploreProfile && activeExploreSection
     ? activeExploreSection.profiles.findIndex((profile) => profile.user_id === selectedExploreProfile.user_id)
     : -1;
@@ -1341,6 +1366,23 @@ export default function PartnerScenePage() {
     ringtoneIntervalRef.current = window.setInterval(playRingPulse, 1800);
   };
 
+  const stopCallTimer = () => {
+    if (callTimerRef.current !== null) {
+      window.clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    setCallDurationSeconds(0);
+  };
+
+  const startCallTimer = () => {
+    if (callTimerRef.current !== null) return;
+    const startedAt = Date.now();
+    setCallDurationSeconds(0);
+    callTimerRef.current = window.setInterval(() => {
+      setCallDurationSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    }, 1000);
+  };
+
   const stopCallStreams = () => {
     localCallStream?.getTracks().forEach((track) => track.stop());
     remoteCallStream?.getTracks().forEach((track) => track.stop());
@@ -1386,6 +1428,7 @@ export default function PartnerScenePage() {
 
   const endCall = (notifyPeer = true) => {
     stopRingtone();
+    stopCallTimer();
     if (notifyPeer && player && callState) {
       sendCallSignal({
         type: "end",
@@ -1471,6 +1514,7 @@ export default function PartnerScenePage() {
       });
       pendingOfferRef.current = null;
       setCallState((current) => (current ? { ...current, status: "connected" } : current));
+      startCallTimer();
     } catch (callError) {
       console.error("Could not accept call", callError);
       setError("Could not join the call. Allow microphone/camera access and try again.");
@@ -1495,7 +1539,7 @@ export default function PartnerScenePage() {
   }, [remoteCallStream]);
 
   useEffect(() => {
-    if (callState?.status === "incoming" || callState?.status === "calling") {
+    if (callState?.status === "incoming" || callState?.status === "ringing") {
       startRingtone();
       return;
     }
@@ -1506,6 +1550,7 @@ export default function PartnerScenePage() {
   useEffect(() => {
     return () => {
       stopRingtone();
+      stopCallTimer();
       void ringtoneContextRef.current?.close();
       ringtoneContextRef.current = null;
     };
@@ -1545,12 +1590,24 @@ export default function PartnerScenePage() {
             peerId: callPayload.from || peerId,
             peerName: callPayload.peer_name || peerProfile?.display_name || "Your match",
           });
+          sendCallSignal({
+            type: "ringing",
+            match_id: match.id,
+            from: player.id,
+            to: callPayload.from || peerId,
+          });
+          return;
+        }
+
+        if (callPayload.type === "ringing") {
+          setCallState((current) => (current && current.peerId === (callPayload.from || peerId) ? { ...current, status: "ringing" } : current));
           return;
         }
 
         if (callPayload.type === "answer" && callPayload.sdp && peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(callPayload.sdp));
           setCallState((current) => (current ? { ...current, status: "connected" } : current));
+          startCallTimer();
           return;
         }
 
@@ -2220,7 +2277,7 @@ export default function PartnerScenePage() {
             }`
       }`}
     >
-      {!activeMatch ? (
+      {!activeMatch && !hasExploreOverlay ? (
         <>
           <button
             type="button"
@@ -2494,6 +2551,7 @@ export default function PartnerScenePage() {
       {callState ? (
         <CallOverlay
           callState={callState}
+          callDurationSeconds={callDurationSeconds}
           localVideoRef={localVideoRef}
           remoteVideoRef={remoteVideoRef}
           localStream={localCallStream}
@@ -2504,7 +2562,7 @@ export default function PartnerScenePage() {
         />
       ) : null}
 
-      {!activeMatch ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#111318]/95 px-4 py-3 text-xs text-white/65 backdrop-blur">
+      {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#111318]/95 px-4 py-3 text-xs text-white/65 backdrop-blur">
         {[
           { id: "swipe", label: "Swipe", icon: "◉" },
           { id: "explore", label: "Explore", icon: "◎" },
@@ -2802,8 +2860,8 @@ function ExploreSectionSheet({
   onOpenProfile: (profile: DatingProfile) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[86] flex items-end bg-black/65 p-3 backdrop-blur sm:items-center sm:justify-center sm:p-6">
-      <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/72 p-2 backdrop-blur sm:items-center sm:justify-center sm:p-6">
+      <div className="flex h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem]">
         <div className={`bg-gradient-to-br ${section.themeClass} p-5`}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -2817,24 +2875,24 @@ function ExploreSectionSheet({
           </div>
           <p className="mt-4 inline-flex rounded-full bg-black/35 px-3 py-1 text-xs font-black text-white">{section.countLabel}</p>
         </div>
-        <div className="max-h-[68dvh] overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="grid gap-3">
             {section.profiles.map((profile) => (
               <button
                 key={profile.user_id}
                 type="button"
                 onClick={() => onOpenProfile(profile)}
-                className="flex w-full items-center gap-3 rounded-[1.6rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/8"
+                className="flex w-full items-start gap-3 rounded-[1.6rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/8"
               >
-                <div className="h-20 w-16 overflow-hidden rounded-2xl bg-white/10">
+                <div className="h-20 w-16 shrink-0 overflow-hidden rounded-2xl bg-white/10">
                   {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h4 className="truncate text-lg font-black text-white">{profile.display_name}, {profile.age}</h4>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h4 className="min-w-0 break-words text-lg font-black leading-tight text-white">{profile.display_name}, {profile.age}</h4>
                     {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
                   </div>
-                  <p className="mt-1 text-sm text-white/65">{profile.location_label || profile.city}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
+                  <p className="mt-1 break-words text-sm leading-5 text-white/65">{fullProfileLocation(profile)}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
                   <p className="mt-1 line-clamp-2 text-sm text-white/74">{profile.relationship_goal || profile.bio}</p>
                 </div>
               </button>
@@ -2876,7 +2934,7 @@ function ExploreProfileSheet({
   const [dragStartX, setDragStartX] = useState<number | null>(null);
   const partnerLabel = officialPartnerLabel(profile);
   const detailChips = [
-    profile.location_label || profile.city,
+    fullProfileLocation(profile),
     distanceLabel,
     profile.wants_kids ? `Kids: ${profile.wants_kids}` : null,
     profile.smokes ? `Smokes: ${profile.smokes}` : null,
@@ -2885,9 +2943,9 @@ function ExploreProfileSheet({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="fixed inset-0 z-[88] flex items-end bg-black/70 p-3 backdrop-blur sm:items-center sm:justify-center sm:p-6">
+    <div className="fixed inset-0 z-[115] flex items-end bg-black/78 p-2 backdrop-blur sm:items-center sm:justify-center sm:p-6">
       <div
-        className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)]"
+        className="flex h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#111318] shadow-[0_32px_100px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[46rem]"
         onPointerDown={(event) => setDragStartX(event.clientX)}
         onPointerUp={(event) => {
           if (dragStartX === null) return;
@@ -2898,7 +2956,7 @@ function ExploreProfileSheet({
         }}
         onPointerCancel={() => setDragStartX(null)}
       >
-        <div className="relative h-72 bg-[#171a20]">
+        <div className="relative h-72 shrink-0 bg-[#171a20]">
           {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/20 to-transparent" />
           <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
@@ -2924,7 +2982,7 @@ function ExploreProfileSheet({
           </div>
         </div>
 
-        <div className="p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="flex flex-wrap gap-2">
             {detailChips.map((chip) => (
               <span key={chip} className="rounded-full bg-white/7 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
@@ -4333,6 +4391,7 @@ function ChatPanel({
 
 function CallOverlay({
   callState,
+  callDurationSeconds,
   localVideoRef,
   remoteVideoRef,
   localStream,
@@ -4342,6 +4401,7 @@ function CallOverlay({
   onEnd,
 }: {
   callState: CallState;
+  callDurationSeconds: number;
   localVideoRef: RefObject<HTMLVideoElement | null>;
   remoteVideoRef: RefObject<HTMLVideoElement | null>;
   localStream: MediaStream | null;
@@ -4352,14 +4412,26 @@ function CallOverlay({
 }) {
   const isVideo = callState.kind === "video";
   const isIncoming = callState.status === "incoming";
+  const formatCallDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    return hours
+      ? `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`
+      : `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
   const statusLabel =
     callState.status === "incoming"
       ? `Incoming ${isVideo ? "video" : "voice"} call`
       : callState.status === "calling"
         ? "Calling..."
+        : callState.status === "ringing"
+          ? "Ringing..."
         : callState.status === "connecting"
           ? "Connecting..."
-          : "Connected";
+          : callDurationSeconds > 0
+            ? formatCallDuration(callDurationSeconds)
+            : "Answered";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur">
@@ -4389,7 +4461,7 @@ function CallOverlay({
               <div className="flex h-28 w-28 items-center justify-center rounded-full bg-blue-600 text-5xl font-black shadow-[0_0_60px_rgba(37,99,235,0.55)]">
                 {callState.peerName.slice(0, 1).toUpperCase()}
               </div>
-              <p className="mt-6 text-lg font-semibold text-white/80">{remoteStream ? "Voice connected" : statusLabel}</p>
+              <p className="mt-6 text-lg font-semibold text-white/80">{callState.status === "connected" ? (callDurationSeconds > 0 ? `Call time ${formatCallDuration(callDurationSeconds)}` : "Answered") : statusLabel}</p>
               <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
               <video ref={localVideoRef} autoPlay playsInline muted className="hidden" />
             </div>
