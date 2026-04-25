@@ -2882,18 +2882,18 @@ function ExploreSectionSheet({
                 key={profile.user_id}
                 type="button"
                 onClick={() => onOpenProfile(profile)}
-                className="flex w-full items-start gap-3 rounded-[1.45rem] border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left transition hover:bg-white/8"
+                className="flex w-full items-center gap-3 rounded-[1.7rem] border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10"
               >
-                <div className="h-[4.6rem] w-[3.7rem] shrink-0 overflow-hidden rounded-[1rem] bg-white/10">
+                <div className="h-20 w-16 shrink-0 overflow-hidden rounded-2xl bg-white/10">
                   {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <h4 className="min-w-0 flex-1 overflow-hidden text-ellipsis text-[1.05rem] font-black leading-tight text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{profile.display_name}, {profile.age}</h4>
-                    {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-black text-slate-950">Verified</span> : null}
+                    <h4 className="truncate text-lg font-bold text-white">{profile.display_name}, {profile.age}</h4>
+                    {isProfileVerified(profile) ? <span className="shrink-0 rounded-full bg-sky-400 px-2 py-1 text-[10px] font-bold text-slate-950">Verified</span> : null}
                   </div>
-                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-5 text-white/62">{fullProfileLocation(profile)}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
-                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] text-white/78">{profile.relationship_goal || profile.bio}</p>
+                  <p className="mt-1 truncate text-sm text-white/65">{fullProfileLocation(profile)}{distanceForProfile(profile) ? ` - ${distanceForProfile(profile)}` : ""}</p>
+                  <p className="mt-1 truncate text-sm text-white/65">{profile.relationship_goal || "Still figuring it out"}</p>
                 </div>
               </button>
             ))}
