@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GameLogo } from "@/components/game-logo";
 import { requestNotificationPermission, showSystemNotification } from "@/lib/browser-notifications";
 import { supabase } from "@/lib/supabase";
@@ -105,6 +105,49 @@ type PartnerSafetySettings = {
   hideOnlineStatus: boolean;
   sendReadReceipts: boolean;
 };
+type RecommendationMode = "balanced" | "recent";
+type VisibilityMode = "standard" | "incognito";
+type AppearanceMode = "system" | "light" | "dark";
+type DistanceUnit = "km" | "mi";
+type PremiumTier = "platinum" | "gold" | "plus";
+type PartnerAppSettings = {
+  premiumTier: PremiumTier;
+  globalMode: boolean;
+  maxDistanceKm: number;
+  allowOutsideRange: boolean;
+  interestedIn: "Women" | "Men" | "Everyone";
+  ageMin: number;
+  ageMax: number;
+  minimumPhotos: number;
+  requireBio: boolean;
+  recommendationMode: RecommendationMode;
+  visibilityMode: VisibilityMode;
+  enableDiscovery: boolean;
+  photoVerifiedChat: boolean;
+  appearance: AppearanceMode;
+  autoplayVideos: boolean;
+  distanceUnit: DistanceUnit;
+  phoneNumber: string;
+  locationName: string;
+  interestsSelection: string[];
+  lookingFor: string;
+  languages: string[];
+  zodiac: string;
+  educationLevel: string;
+  familyPlans: string;
+  communicationStyle: string;
+  loveStyle: string;
+  pets: string;
+  drinkingPreference: string;
+  smokingPreference: string;
+  workoutHabit: string;
+  socialMediaHandle: string;
+  notificationsEnabled: boolean;
+  emailUpdates: boolean;
+  pushNotifications: boolean;
+  smsUpdates: boolean;
+  teamPartnerUpdates: boolean;
+};
 type PartnerUserControls = {
   muted?: boolean;
   blocked?: boolean;
@@ -164,6 +207,7 @@ const schemaHelp = "Dating tables are missing or outdated. Run the latest SQL in
 const sortPair = (first: string, second: string) => (first < second ? [first, second] : [second, first]);
 const summaryKey = (userId: string) => `dating-notification-summary:${userId}`;
 const safetySettingsKey = (userId: string) => `dating-safety-settings:${userId}`;
+const appSettingsKey = (userId: string) => `dating-app-settings:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
 const defaultSafetySettings: PartnerSafetySettings = {
   messageNotifications: true,
@@ -173,6 +217,44 @@ const defaultSafetySettings: PartnerSafetySettings = {
   hideDistance: false,
   hideOnlineStatus: false,
   sendReadReceipts: true,
+};
+const defaultPartnerAppSettings: PartnerAppSettings = {
+  premiumTier: "gold",
+  globalMode: false,
+  maxDistanceKm: 18,
+  allowOutsideRange: true,
+  interestedIn: "Women",
+  ageMin: 18,
+  ageMax: 24,
+  minimumPhotos: 1,
+  requireBio: false,
+  recommendationMode: "balanced",
+  visibilityMode: "standard",
+  enableDiscovery: true,
+  photoVerifiedChat: false,
+  appearance: "system",
+  autoplayVideos: true,
+  distanceUnit: "km",
+  phoneNumber: "27 68 207 4981",
+  locationName: "Eersterivier, South Africa",
+  interestsSelection: [],
+  lookingFor: "",
+  languages: [],
+  zodiac: "",
+  educationLevel: "",
+  familyPlans: "",
+  communicationStyle: "",
+  loveStyle: "",
+  pets: "",
+  drinkingPreference: "",
+  smokingPreference: "",
+  workoutHabit: "",
+  socialMediaHandle: "",
+  notificationsEnabled: true,
+  emailUpdates: true,
+  pushNotifications: true,
+  smsUpdates: false,
+  teamPartnerUpdates: false,
 };
 const chatImagePrefix = "[chat-image]";
 const chatAudioPrefix = "[chat-audio]";
@@ -203,6 +285,11 @@ const intentLounges = ["Serious Relationship", "Casual Dating", "Friendship/Soci
 const filterAny = "Any";
 const kidsFilters = [filterAny, "Open", "Yes", "No", "Prefer not to say"];
 const habitFilters = [filterAny, "No", "Sometimes", "Yes", "Prefer not to say"];
+const settingsGenderTargets = {
+  Women: ["woman", "women", "female"],
+  Men: ["man", "men", "male"],
+  Everyone: [],
+} satisfies Record<PartnerAppSettings["interestedIn"], string[]>;
 const activeChatLimit = 5;
 const voiceAudioConstraints: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 const isProfileVerified = (profile?: Pick<DatingProfile, "contact_verified" | "profile_verified" | "is_photo_verified" | "selfie_url">) =>
@@ -416,6 +503,7 @@ export default function PartnerScenePage() {
   const [isLightMode, setIsLightMode] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [safetySettings, setSafetySettings] = useState<PartnerSafetySettings>(defaultSafetySettings);
+  const [appSettings, setAppSettings] = useState<PartnerAppSettings>(defaultPartnerAppSettings);
   const [userControls, setUserControls] = useState<Record<string, PartnerUserControls>>({});
   const [activeLounge, setActiveLounge] = useState("Serious Relationship");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -466,6 +554,15 @@ export default function PartnerScenePage() {
       const next = { ...current, ...changes };
       if (player && typeof window !== "undefined") {
         window.localStorage.setItem(safetySettingsKey(player.id), JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+  const updateAppSettings = (changes: Partial<PartnerAppSettings>) => {
+    setAppSettings((current) => {
+      const next = { ...current, ...changes };
+      if (player && typeof window !== "undefined") {
+        window.localStorage.setItem(appSettingsKey(player.id), JSON.stringify(next));
       }
       return next;
     });
@@ -778,6 +875,18 @@ export default function PartnerScenePage() {
       }
     }
 
+    const storedAppSettings = window.localStorage.getItem(appSettingsKey(player.id));
+    if (!storedAppSettings) {
+      setAppSettings(defaultPartnerAppSettings);
+    } else {
+      try {
+        setAppSettings({ ...defaultPartnerAppSettings, ...JSON.parse(storedAppSettings) });
+      } catch {
+        window.localStorage.removeItem(appSettingsKey(player.id));
+        setAppSettings(defaultPartnerAppSettings);
+      }
+    }
+
     const storedControls = window.localStorage.getItem(userControlsKey(player.id));
     if (!storedControls) {
       setUserControls({});
@@ -791,6 +900,26 @@ export default function PartnerScenePage() {
       setUserControls({});
     }
   }, [player]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (appSettings.appearance === "light") {
+      setIsLightMode(true);
+      return;
+    }
+
+    if (appSettings.appearance === "dark") {
+      setIsLightMode(false);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
+    const syncMode = () => setIsLightMode(mediaQuery.matches);
+    syncMode();
+    mediaQuery.addEventListener("change", syncMode);
+    return () => mediaQuery.removeEventListener("change", syncMode);
+  }, [appSettings.appearance]);
 
   useEffect(() => {
     if (!player) return;
@@ -1127,19 +1256,33 @@ export default function PartnerScenePage() {
     };
   }, [matches.length, player]);
 
+  const ownDatingProfile = player ? profileMap[player.id] : null;
   const visiblePartnerProfiles = useMemo(
     () =>
       profiles.filter((profile) => {
         const controls = userControls[profile.user_id] || {};
         if (controls.blocked || controls.blockedBy) return false;
+        if (!appSettings.enableDiscovery) return false;
         if ((profile.intent_lounge || profile.relationship_goal || "Serious Relationship") !== activeLounge) return false;
+        if (appSettings.interestedIn !== "Everyone" && profile.gender) {
+          const normalizedGender = profile.gender.toLowerCase();
+          if (!settingsGenderTargets[appSettings.interestedIn].some((value) => normalizedGender.includes(value))) return false;
+        }
+        if (profile.age < appSettings.ageMin || profile.age > appSettings.ageMax) return false;
+        const photoCount = [profile.photo_url, ...(profile.gallery_urls || [])].filter(Boolean).length;
+        if (photoCount < appSettings.minimumPhotos) return false;
+        if (appSettings.requireBio && !profile.bio.trim()) return false;
         if (kidsFilter !== filterAny && profile.wants_kids !== kidsFilter) return false;
         if (smokesFilter !== filterAny && profile.smokes !== smokesFilter) return false;
         if (drinksFilter !== filterAny && profile.drinks !== drinksFilter) return false;
         if (soberDatesOnly && !profile.sober_dates) return false;
+        if (!appSettings.globalMode) {
+          const distanceKm = distanceBetweenProfilesInKm(ownDatingProfile, profile);
+          if (distanceKm !== null && distanceKm > appSettings.maxDistanceKm && !appSettings.allowOutsideRange) return false;
+        }
         return true;
       }),
-    [activeLounge, drinksFilter, kidsFilter, profiles, smokesFilter, soberDatesOnly, userControls]
+    [activeLounge, appSettings, drinksFilter, kidsFilter, ownDatingProfile, profiles, smokesFilter, soberDatesOnly, userControls]
   );
 
   const currentProfile = useMemo(() => {
@@ -1170,7 +1313,6 @@ export default function PartnerScenePage() {
       : "Confirm Official"
     : "Make It Official";
   const activeMessages = activeMatch ? messages.filter((message) => message.match_id === activeMatch.id) : [];
-  const ownDatingProfile = player ? profileMap[player.id] : null;
   const distanceForProfile = (profile?: DatingProfile | null) =>
     safetySettings.hideDistance ? null : distanceLabelBetweenProfiles(ownDatingProfile, profile);
   const unreadCounts = useMemo(() => {
@@ -2292,7 +2434,7 @@ export default function PartnerScenePage() {
           </button>
           <button
             type="button"
-            onClick={() => setIsLightMode((current) => !current)}
+            onClick={() => updateAppSettings({ appearance: isLightMode ? "dark" : "light" })}
             className={`fixed right-4 top-4 z-[80] rounded-full px-5 py-3 text-sm font-semibold shadow-xl backdrop-blur transition ${
               isLightMode ? "bg-blue-600 text-white hover:bg-blue-500" : "bg-white text-slate-950 hover:bg-stone-100"
             }`}
@@ -2541,19 +2683,18 @@ export default function PartnerScenePage() {
             </div>
             <button
               type="button"
-              onClick={() => setShowProfileSettings((current) => !current)}
-              className="mt-5 flex w-full items-center justify-between gap-3 rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-4 text-left"
+              onClick={() => setShowProfileSettings(true)}
+              className="mt-5 flex w-full items-center justify-between gap-3 rounded-[1.6rem] border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] px-4 py-4 text-left shadow-[0_18px_40px_rgba(0,0,0,0.22)]"
               aria-expanded={showProfileSettings}
             >
               <span>
                 <span className="block text-sm uppercase tracking-[0.28em] text-white/45">Settings</span>
-                <span className="mt-1 block text-base font-black text-white">Safety & attention</span>
+                <span className="mt-1 block text-base font-black text-white">Discovery, privacy, and app controls</span>
               </span>
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-xl text-white">
-                {showProfileSettings ? "-" : "+"}
+                &gt;
               </span>
             </button>
-            {showProfileSettings ? <SafetySettingsPanel settings={safetySettings} onChange={updateSafetySettings} /> : null}
           </section>
         ) : null}
       </div>
@@ -2623,6 +2764,23 @@ export default function PartnerScenePage() {
               setChatDraft(draft);
             }
           }}
+        />
+      ) : null}
+      {showProfileSettings ? (
+        <PartnerSettingsSheet
+          profile={profileMap[player?.id || ""]}
+          safetySettings={safetySettings}
+          appSettings={appSettings}
+          onClose={() => setShowProfileSettings(false)}
+          onSafetyChange={updateSafetySettings}
+          onAppSettingsChange={updateAppSettings}
+          onEditProfile={() => { window.location.href = "/setup"; }}
+          onRequestPermissions={() => {
+            void requestNotificationPermission();
+            setStatus("Notification permission request opened.");
+          }}
+          onAction={(message) => setStatus(message)}
+          onLogout={() => void logout()}
         />
       ) : null}
     </main>
@@ -3181,83 +3339,399 @@ function StatBox({ label, value }: { label: string; value: number }) {
   return <div className="rounded-[1.7rem] border border-white/10 bg-white/5 p-4"><p className="text-sm uppercase tracking-[0.25em] text-white/50">{label}</p><p className="mt-2 text-3xl font-black">{value}</p></div>;
 }
 
-function SafetySettingsPanel({
-  settings,
-  onChange,
+function PartnerSettingsSheet({
+  profile,
+  safetySettings,
+  appSettings,
+  onClose,
+  onSafetyChange,
+  onAppSettingsChange,
+  onEditProfile,
+  onRequestPermissions,
+  onAction,
+  onLogout,
 }: {
-  settings: PartnerSafetySettings;
-  onChange: (changes: Partial<PartnerSafetySettings>) => void;
+  profile?: DatingProfile;
+  safetySettings: PartnerSafetySettings;
+  appSettings: PartnerAppSettings;
+  onClose: () => void;
+  onSafetyChange: (changes: Partial<PartnerSafetySettings>) => void;
+  onAppSettingsChange: (changes: Partial<PartnerAppSettings>) => void;
+  onEditProfile: () => void;
+  onRequestPermissions: () => void;
+  onAction: (message: string) => void;
+  onLogout: () => void;
 }) {
+  const preferenceChoices = ["Music", "Gym", "Travel", "Cooking", "Business", "Faith", "Gaming", "Movies"];
+  const locationLabel = profile?.location_label || profile?.city || appSettings.locationName;
+  const toggleInterest = (value: string) => {
+    const next = appSettings.interestsSelection.includes(value)
+      ? appSettings.interestsSelection.filter((item) => item !== value)
+      : [...appSettings.interestsSelection, value];
+    onAppSettingsChange({ interestsSelection: next });
+  };
+
   return (
-    <div className="mt-5 rounded-[1.8rem] border border-white/10 bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-[0.28em] text-white/45">Safety & attention</p>
-      <div className="mt-4 grid gap-3">
-        <SafetyToggle
-          label="Message notifications"
-          description="Show system alerts for new partner messages."
-          checked={settings.messageNotifications}
-          onChange={(value) => onChange({ messageNotifications: value })}
-        />
-        <SafetyToggle
-          label="Quiet mode"
-          description="Pause likes, matches, reminders, and message notifications."
-          checked={settings.quietMode}
-          onChange={(value) => onChange({ quietMode: value })}
-        />
-        <SafetyToggle
-          label="Scam warnings"
-          description="Warn before risky requests for codes, money, passwords, or banking details."
-          checked={settings.scamWarnings}
-          onChange={(value) => onChange({ scamWarnings: value })}
-        />
-        <SafetyToggle
-          label="Chat search"
-          description="Show a search box inside open chats."
-          checked={settings.chatSearch}
-          onChange={(value) => onChange({ chatSearch: value })}
-        />
-        <SafetyToggle
-          label="Hide my distance"
-          description="Do not show KM distance on cards, match rows, or chat headers."
-          checked={settings.hideDistance}
-          onChange={(value) => onChange({ hideDistance: value })}
-        />
-        <SafetyToggle
-          label="Hide online status"
-          description="Appear offline and stop sending live presence while enabled."
-          checked={settings.hideOnlineStatus}
-          onChange={(value) => onChange({ hideOnlineStatus: value })}
-        />
-        <SafetyToggle
-          label="Send read receipts"
-          description="Let matches see green ticks after you open their messages."
-          checked={settings.sendReadReceipts}
-          onChange={(value) => onChange({ sendReadReceipts: value })}
-        />
+    <div className="fixed inset-0 z-[130] bg-black/86 backdrop-blur">
+      <div className="mx-auto flex h-dvh w-full max-w-md flex-col bg-[#0b0c10] text-white shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div className="flex items-center gap-3 border-b border-white/8 px-4 py-4">
+          <button type="button" onClick={onClose} className="text-2xl font-light text-rose-400">x</button>
+          <div>
+            <p className="text-sm font-semibold text-white/65">Settings</p>
+            <h2 className="text-xl font-black">Profile & Discovery</h2>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-4">
+          <div className="space-y-4">
+            <div className="grid gap-3">
+              {[
+                { tier: "platinum" as const, title: "tinder platinum", subtitle: "Priority Likes, See who likes you & more", accent: "text-stone-100" },
+                { tier: "gold" as const, title: "tinder gold", subtitle: "See who likes you & more", accent: "text-amber-300" },
+                { tier: "plus" as const, title: "tinder+", subtitle: "Unlimited Likes & more", accent: "text-rose-400" },
+              ].map((tier) => (
+                <button
+                  key={tier.tier}
+                  type="button"
+                  onClick={() => {
+                    onAppSettingsChange({ premiumTier: tier.tier });
+                    onAction(`${tier.title} selected. Premium preview updated.`);
+                  }}
+                  className={`rounded-[1.8rem] border px-4 py-5 text-left shadow-[0_18px_42px_rgba(0,0,0,0.22)] transition ${
+                    appSettings.premiumTier === tier.tier ? "border-amber-300/45 bg-[#17191f]" : "border-white/8 bg-[#121419]"
+                  }`}
+                >
+                  <p className={`text-[2rem] font-black leading-none ${tier.accent}`}>{tier.title}</p>
+                  <p className="mt-2 text-sm text-white/72">{tier.subtitle}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FeaturePromoCard title="Get Super Likes" accent="text-sky-400" active={appSettings.premiumTier === "platinum"} onClick={() => onAction("Super Likes are ready for premium profiles.")} />
+              <FeaturePromoCard title="Get Boosts" accent="text-violet-400" active={appSettings.premiumTier !== "plus"} onClick={() => onAction("Boost controls are available in your premium center.")} />
+              <FeaturePromoCard title="Go Incognito" accent="text-white/82" active={appSettings.visibilityMode === "incognito"} onClick={() => onAppSettingsChange({ visibilityMode: "incognito" })} />
+              <FeaturePromoCard title="Passport Mode" accent="text-rose-400" active={appSettings.globalMode} onClick={() => onAppSettingsChange({ globalMode: !appSettings.globalMode })} />
+            </div>
+
+            <SettingsSection title="Account Settings">
+              <InfoRow label="Phone Number" value={appSettings.phoneNumber} onClick={() => onAction("Phone number controls are available from account security.")} />
+              <p className="px-1 pb-1 text-xs leading-5 text-white/48">Verify a phone number to help secure your account.</p>
+            </SettingsSection>
+
+            <SettingsSection title="Discovery Settings">
+              <div className="rounded-[1.8rem] bg-[#15171d] p-4">
+                <p className="text-sm font-bold">Location</p>
+                <p className="mt-3 text-lg font-semibold text-white/90">{locationLabel}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLocation = appSettings.globalMode ? "Cape Town, South Africa" : "Johannesburg, South Africa";
+                    onAppSettingsChange({ locationName: nextLocation, globalMode: !appSettings.globalMode });
+                    onAction(`Location updated to ${nextLocation}.`);
+                  }}
+                  className="mt-3 text-sm font-black text-rose-400"
+                >
+                  Add a new location
+                </button>
+              </div>
+              <ToggleRow label="Global" description="Going global will allow you to see people nearby and from around the world." checked={appSettings.globalMode} onChange={(value) => onAppSettingsChange({ globalMode: value })} />
+              <RangeCard
+                title="Maximum Distance"
+                valueLabel={`${appSettings.distanceUnit === "km" ? appSettings.maxDistanceKm : Math.round(appSettings.maxDistanceKm * 0.621371)}${appSettings.distanceUnit}.`}
+                min={2}
+                max={120}
+                value={appSettings.maxDistanceKm}
+                onChange={(value) => onAppSettingsChange({ maxDistanceKm: value })}
+              >
+                <ToggleRow label="Show people further away if I run out of profiles to see" checked={appSettings.allowOutsideRange} onChange={(value) => onAppSettingsChange({ allowOutsideRange: value })} compact />
+              </RangeCard>
+              <InfoRow label="Interested In" value={appSettings.interestedIn} onClick={() => onAppSettingsChange({ interestedIn: appSettings.interestedIn === "Women" ? "Men" : appSettings.interestedIn === "Men" ? "Everyone" : "Women" })} />
+              <div className="rounded-[1.8rem] bg-[#15171d] p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-semibold">Age Range</p>
+                  <p className="text-lg text-white/70">{appSettings.ageMin} - {appSettings.ageMax}</p>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <input type="range" min={18} max={appSettings.ageMax} value={appSettings.ageMin} onChange={(event) => onAppSettingsChange({ ageMin: Number(event.target.value) })} className="accent-rose-500" />
+                  <input type="range" min={appSettings.ageMin} max={60} value={appSettings.ageMax} onChange={(event) => onAppSettingsChange({ ageMax: Number(event.target.value) })} className="accent-rose-500" />
+                </div>
+                <div className="mt-4">
+                  <ToggleRow label="Show people slightly out of my preferred range if I run out of profiles to see" checked={appSettings.allowOutsideRange} onChange={(value) => onAppSettingsChange({ allowOutsideRange: value })} compact />
+                </div>
+              </div>
+              <div className="rounded-[1.8rem] border border-amber-300/10 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,0.18),transparent_28%),#17140f] p-4">
+                <p className="text-4xl font-black leading-none text-amber-300">Unlock more Preferences...</p>
+                <p className="mt-3 max-w-xs text-sm leading-6 text-white/75">Want more personalization? Set your Premium Preferences to see profiles that match your vibe without missing out on others.</p>
+                <button type="button" onClick={() => onAction("Premium preferences preview opened.")} className="mt-5 rounded-full bg-amber-300 px-5 py-3 font-black text-slate-950">Unlock</button>
+              </div>
+              <RangeCard title="Minimum Number of Photos" valueLabel={`${appSettings.minimumPhotos}`} min={1} max={6} value={appSettings.minimumPhotos} onChange={(value) => onAppSettingsChange({ minimumPhotos: value })}>
+                <ToggleRow label="Has a bio" checked={appSettings.requireBio} onChange={(value) => onAppSettingsChange({ requireBio: value })} compact />
+              </RangeCard>
+              <div className="rounded-[1.8rem] bg-[#15171d] p-4">
+                <p className="text-sm font-bold">Interests</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {preferenceChoices.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleInterest(item)}
+                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${appSettings.interestsSelection.includes(item) ? "bg-rose-500 text-white" : "bg-white/7 text-white/72"}`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {[
+                ["Looking for", "lookingFor"],
+                ["Add languages", "languages"],
+                ["Zodiac", "zodiac"],
+                ["Education", "educationLevel"],
+                ["Family Plans", "familyPlans"],
+                ["Communication Style", "communicationStyle"],
+                ["Love Style", "loveStyle"],
+                ["Pets", "pets"],
+                ["Drinking", "drinkingPreference"],
+                ["Smoking", "smokingPreference"],
+                ["Workout", "workoutHabit"],
+                ["Social Media", "socialMediaHandle"],
+              ].map(([label, key]) => (
+                <InfoRow
+                  key={label}
+                  label={label}
+                  value={Array.isArray(appSettings[key as keyof PartnerAppSettings]) ? "Selected" : String(appSettings[key as keyof PartnerAppSettings] || "Select")}
+                  onClick={() => {
+                    const nextValue = label === "Add languages" ? ["English", "Xitsonga"] : label === "Looking for" ? "Long-term partner" : "Selected";
+                    onAppSettingsChange({ [key]: nextValue } as Partial<PartnerAppSettings>);
+                  }}
+                />
+              ))}
+            </SettingsSection>
+
+            <SettingsSection title="Control Who You See">
+              <ChoiceCard label="Balanced Recommendations" description="See the most relevant people to you." active={appSettings.recommendationMode === "balanced"} onClick={() => onAppSettingsChange({ recommendationMode: "balanced" })} />
+              <ChoiceCard label="Recently Active" description="See the most recently active people first." active={appSettings.recommendationMode === "recent"} onClick={() => onAppSettingsChange({ recommendationMode: "recent" })} />
+            </SettingsSection>
+
+            <SettingsSection title="Control My Visibility">
+              <ChoiceCard label="Standard" description="You will be discoverable in the card stack." active={appSettings.visibilityMode === "standard"} onClick={() => onAppSettingsChange({ visibilityMode: "standard" })} />
+              <ChoiceCard label="Incognito" description="You will be discoverable only by people you like." active={appSettings.visibilityMode === "incognito"} onClick={() => onAppSettingsChange({ visibilityMode: "incognito" })} />
+            </SettingsSection>
+
+            <SettingsSection title="Enable Discovery">
+              <ToggleRow label="Enable Discovery" description="When turned off, your profile will be hidden from the card stack and Discovery will be disabled." checked={appSettings.enableDiscovery} onChange={(value) => onAppSettingsChange({ enableDiscovery: value })} />
+            </SettingsSection>
+
+            <SettingsSection title="Control Who Messages You">
+              <ToggleRow label="Photo Verified Chat" description="Only receive messages from photo-verified profiles." checked={appSettings.photoVerifiedChat} onChange={(value) => onAppSettingsChange({ photoVerifiedChat: value })} />
+              <InfoRow label="Block Contacts" value="Manage" onClick={() => onAction("Contact blocking tools are ready to review.")} />
+            </SettingsSection>
+
+            <SettingsSection title="Safety & Attention">
+              <ToggleRow label="Message notifications" description="Show system alerts for new partner messages." checked={safetySettings.messageNotifications} onChange={(value) => onSafetyChange({ messageNotifications: value })} />
+              <ToggleRow label="Quiet mode" description="Pause likes, matches, reminders, and message notifications." checked={safetySettings.quietMode} onChange={(value) => onSafetyChange({ quietMode: value })} />
+              <ToggleRow label="Scam warnings" description="Warn before risky requests for codes, money, passwords, or banking details." checked={safetySettings.scamWarnings} onChange={(value) => onSafetyChange({ scamWarnings: value })} />
+              <ToggleRow label="Chat search" description="Show a search box inside open chats." checked={safetySettings.chatSearch} onChange={(value) => onSafetyChange({ chatSearch: value })} />
+              <ToggleRow label="Hide my distance" description="Do not show KM distance on cards, match rows, or chat headers." checked={safetySettings.hideDistance} onChange={(value) => onSafetyChange({ hideDistance: value })} />
+              <ToggleRow label="Hide online status" description="Appear offline and stop sending live presence while enabled." checked={safetySettings.hideOnlineStatus} onChange={(value) => onSafetyChange({ hideOnlineStatus: value })} />
+              <ToggleRow label="Send read receipts" description="Let matches see when you have opened their messages." checked={safetySettings.sendReadReceipts} onChange={(value) => onSafetyChange({ sendReadReceipts: value })} />
+            </SettingsSection>
+
+            <SettingsSection title="Appearance">
+              <SegmentedButtons
+                value={appSettings.appearance}
+                options={[
+                  { label: "System", value: "system" },
+                  { label: "Light", value: "light" },
+                  { label: "Dark", value: "dark" },
+                ]}
+                onChange={(value) => onAppSettingsChange({ appearance: value as AppearanceMode })}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="Data Usage">
+              <ToggleRow label="Autoplay Videos" checked={appSettings.autoplayVideos} onChange={(value) => onAppSettingsChange({ autoplayVideos: value })} />
+            </SettingsSection>
+
+            <SettingsSection title="App Settings">
+              <ToggleRow label="Notifications" checked={appSettings.notificationsEnabled} onChange={(value) => onAppSettingsChange({ notificationsEnabled: value })} />
+              <ToggleRow label="Email" checked={appSettings.emailUpdates} onChange={(value) => onAppSettingsChange({ emailUpdates: value })} />
+              <ToggleRow label="Push Notifications" checked={appSettings.pushNotifications} onChange={(value) => onAppSettingsChange({ pushNotifications: value })} />
+              <ToggleRow label="SMS" checked={appSettings.smsUpdates} onChange={(value) => onAppSettingsChange({ smsUpdates: value })} />
+              <ToggleRow label="Team Tinder" checked={appSettings.teamPartnerUpdates} onChange={(value) => onAppSettingsChange({ teamPartnerUpdates: value })} />
+              <button type="button" onClick={onRequestPermissions} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left text-sm font-bold">Request browser notification permission</button>
+            </SettingsSection>
+
+            <SettingsSection title="Show Distances In">
+              <SegmentedButtons
+                value={appSettings.distanceUnit}
+                options={[
+                  { label: "Km.", value: "km" },
+                  { label: "Mi.", value: "mi" },
+                ]}
+                onChange={(value) => onAppSettingsChange({ distanceUnit: value as DistanceUnit })}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="Account & Help">
+              <button type="button" onClick={onEditProfile} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Edit profile</button>
+              <button type="button" onClick={() => onAction("Help & Support is available from your support center.")} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Help & Support</button>
+              <button type="button" onClick={() => onAction("Problem reporting is ready. Add the issue details from the next screen.")} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Report a problem</button>
+              <button type="button" onClick={onLogout} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold text-rose-300">Logout</button>
+            </SettingsSection>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function SafetyToggle({
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-3 px-1 text-[1.05rem] font-black text-white">{title}</h3>
+      <div className="grid gap-3">{children}</div>
+    </section>
+  );
+}
+
+function ToggleRow({
   label,
   description,
   checked,
   onChange,
+  compact,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`rounded-[1.6rem] bg-[#15171d] ${compact ? "p-0" : "p-4"}`}>
+      <div className={`flex items-center justify-between gap-4 ${compact ? "px-0 py-0" : ""}`}>
+        <div className="min-w-0">
+          <p className="text-lg font-semibold text-white">{label}</p>
+          {description ? <p className="mt-2 text-sm leading-6 text-white/62">{description}</p> : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(!checked)}
+          className={`relative h-8 w-14 shrink-0 rounded-full border transition ${checked ? "border-rose-400 bg-rose-500" : "border-white/14 bg-white/10"}`}
+          aria-pressed={checked}
+        >
+          <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${checked ? "left-7" : "left-1"}`} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, onClick }: { label: string; value: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="flex items-center justify-between rounded-[1.6rem] bg-[#15171d] px-4 py-4 text-left">
+      <span className="text-lg font-medium text-white">{label}</span>
+      <span className="text-base text-white/56">{value} &gt;</span>
+    </button>
+  );
+}
+
+function RangeCard({
+  title,
+  valueLabel,
+  min,
+  max,
+  value,
+  onChange,
+  children,
+}: {
+  title: string;
+  valueLabel: string;
+  min: number;
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="rounded-[1.8rem] bg-[#15171d] p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-lg font-semibold">{title}</p>
+        <p className="text-lg text-white/68">{valueLabel}</p>
+      </div>
+      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-5 w-full accent-rose-500" />
+      {children ? <div className="mt-4">{children}</div> : null}
+    </div>
+  );
+}
+
+function ChoiceCard({
+  label,
+  description,
+  active,
+  onClick,
 }: {
   label: string;
   description: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-4 rounded-2xl bg-black/20 p-3">
-      <span className="min-w-0">
-        <span className="block text-sm font-bold text-white">{label}</span>
-        <span className="mt-1 block text-xs leading-5 text-white/58">{description}</span>
-      </span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-5 w-5 shrink-0 accent-sky-400" />
-    </label>
+    <button type="button" onClick={onClick} className={`rounded-[1.6rem] border px-4 py-4 text-left ${active ? "border-rose-400/45 bg-[#191117]" : "border-white/8 bg-[#15171d]"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-lg font-semibold text-white">{label}</p>
+          <p className="mt-2 text-sm leading-6 text-white/62">{description}</p>
+        </div>
+        <span className={`text-2xl font-black ${active ? "text-rose-400" : "text-white/20"}`}>✓</span>
+      </div>
+    </button>
+  );
+}
+
+function SegmentedButtons({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2 rounded-[1.8rem] bg-[#15171d] p-3">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`rounded-[1rem] px-3 py-3 text-sm font-black transition ${value === option.value ? "bg-rose-500 text-white" : "bg-black/10 text-white/66"}`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FeaturePromoCard({
+  title,
+  accent,
+  active,
+  onClick,
+}: {
+  title: string;
+  accent: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={`rounded-[1.8rem] border px-4 py-5 text-left ${active ? "border-white/18 bg-[#17191f]" : "border-white/8 bg-[#121419]"}`}>
+      <div className={`text-2xl font-black ${accent}`}>★</div>
+      <p className={`mt-4 text-lg font-semibold ${active ? "text-white" : "text-white/84"}`}>{title}</p>
+    </button>
   );
 }
 
