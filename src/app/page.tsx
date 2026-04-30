@@ -142,6 +142,7 @@ type PartnerAppSettings = {
   smokingPreference: string;
   workoutHabit: string;
   socialMediaHandle: string;
+  blockedContacts: string[];
   notificationsEnabled: boolean;
   emailUpdates: boolean;
   pushNotifications: boolean;
@@ -158,6 +159,7 @@ type SettingsSelectorState = {
   options: string[];
   multi?: boolean;
 } | null;
+type SettingsPanelState = "phone" | "contacts" | "support" | null;
 type PartnerUserControls = {
   muted?: boolean;
   blocked?: boolean;
@@ -262,6 +264,7 @@ const defaultPartnerAppSettings: PartnerAppSettings = {
   smokingPreference: "",
   workoutHabit: "",
   socialMediaHandle: "",
+  blockedContacts: [],
   notificationsEnabled: true,
   emailUpdates: true,
   pushNotifications: true,
@@ -3463,6 +3466,17 @@ function PartnerSettingsSheet({
   ];
   const locationLabel = profile?.location_label || profile?.city || appSettings.locationName;
   const [selectorState, setSelectorState] = useState<SettingsSelectorState>(null);
+  const [panelState, setPanelState] = useState<SettingsPanelState>(null);
+  const [phoneDraft, setPhoneDraft] = useState(appSettings.phoneNumber);
+  const suggestedContacts = ["Mom", "Brother Sam", "Lerato", "Anele", "Church Group", "Work Colleague"];
+  const supportTopics = [
+    "Account access help",
+    "Report a safety concern",
+    "Billing and subscription support",
+    "Photo verification help",
+    "Discovery settings help",
+  ];
+  const blockedContactsLabel = appSettings.blockedContacts.length ? `${appSettings.blockedContacts.length} blocked` : "Manage";
   const toggleInterest = (value: string) => {
     const next = appSettings.interestsSelection.includes(value)
       ? appSettings.interestsSelection.filter((item) => item !== value)
@@ -3490,6 +3504,12 @@ function PartnerSettingsSheet({
     }
     onAppSettingsChange({ [selectorState.key]: option } as Partial<PartnerAppSettings>);
     setSelectorState(null);
+  };
+  const toggleBlockedContact = (contact: string) => {
+    const next = appSettings.blockedContacts.includes(contact)
+      ? appSettings.blockedContacts.filter((item) => item !== contact)
+      : [...appSettings.blockedContacts, contact];
+    onAppSettingsChange({ blockedContacts: next });
   };
 
   return (
@@ -3536,7 +3556,10 @@ function PartnerSettingsSheet({
             </div>
 
             <SettingsSection title="Account Settings">
-              <InfoRow label="Phone Number" value={appSettings.phoneNumber} onClick={() => onAction("Phone number controls are available from account security.")} />
+              <InfoRow label="Phone Number" value={appSettings.phoneNumber} onClick={() => {
+                setPhoneDraft(appSettings.phoneNumber);
+                setPanelState("phone");
+              }} />
               <p className="px-1 pb-1 text-xs leading-5 text-white/48">Verify a phone number to help secure your account.</p>
             </SettingsSection>
 
@@ -3630,7 +3653,7 @@ function PartnerSettingsSheet({
 
             <SettingsSection title="Control Who Messages You">
               <ToggleRow label="Photo Verified Chat" description="Only receive messages from photo-verified profiles." checked={appSettings.photoVerifiedChat} onChange={(value) => onAppSettingsChange({ photoVerifiedChat: value })} />
-              <InfoRow label="Block Contacts" value="Manage" onClick={() => onAction("Contact blocking tools are ready to review.")} />
+              <InfoRow label="Block Contacts" value={blockedContactsLabel} onClick={() => setPanelState("contacts")} />
             </SettingsSection>
 
             <SettingsSection title="Safety & Attention">
@@ -3681,7 +3704,7 @@ function PartnerSettingsSheet({
 
             <SettingsSection title="Account & Help">
               <button type="button" onClick={onEditProfile} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Edit profile</button>
-              <button type="button" onClick={() => onAction("Help & Support is available from your support center.")} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Help & Support</button>
+              <button type="button" onClick={() => setPanelState("support")} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Help & Support</button>
               <button type="button" onClick={() => onAction("Problem reporting is ready. Add the issue details from the next screen.")} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold">Report a problem</button>
               <button type="button" onClick={onLogout} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left font-semibold text-rose-300">Logout</button>
             </SettingsSection>
@@ -3697,6 +3720,72 @@ function PartnerSettingsSheet({
           onClose={() => setSelectorState(null)}
           onSelect={updateSelectorValue}
         />
+      ) : null}
+      {panelState === "phone" ? (
+        <SettingsModalShell title="Phone Number" onClose={() => setPanelState(null)}>
+          <div className="space-y-4">
+            <p className="text-sm leading-6 text-white/62">Update the phone number used to secure your OBE-E account.</p>
+            <input
+              value={phoneDraft}
+              onChange={(event) => setPhoneDraft(event.target.value)}
+              placeholder="Enter phone number"
+              className="w-full rounded-[1.2rem] border border-white/10 bg-[#171a20] px-4 py-4 text-lg text-white outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                onAppSettingsChange({ phoneNumber: phoneDraft.trim() || appSettings.phoneNumber });
+                setPanelState(null);
+                onAction("Phone number updated successfully.");
+              }}
+              className="w-full rounded-[1.2rem] bg-rose-500 px-4 py-4 text-lg font-black text-white"
+            >
+              Save phone number
+            </button>
+          </div>
+        </SettingsModalShell>
+      ) : null}
+      {panelState === "contacts" ? (
+        <SettingsModalShell title="Block Contacts" onClose={() => setPanelState(null)}>
+          <div className="space-y-3">
+            <p className="text-sm leading-6 text-white/62">Choose which contacts should not appear in your discovery experience.</p>
+            {suggestedContacts.map((contact) => {
+              const active = appSettings.blockedContacts.includes(contact);
+              return (
+                <button
+                  key={contact}
+                  type="button"
+                  onClick={() => toggleBlockedContact(contact)}
+                  className={`flex w-full items-center justify-between rounded-[1.2rem] px-4 py-4 text-left ${active ? "bg-rose-500/14 ring-1 ring-rose-400/45" : "bg-[#171a20]"}`}
+                >
+                  <span className="text-base font-semibold text-white">{contact}</span>
+                  <span className={`text-xl font-black ${active ? "text-rose-400" : "text-white/22"}`}>✓</span>
+                </button>
+              );
+            })}
+          </div>
+        </SettingsModalShell>
+      ) : null}
+      {panelState === "support" ? (
+        <SettingsModalShell title="Help & Support" onClose={() => setPanelState(null)}>
+          <div className="space-y-3">
+            <p className="text-sm leading-6 text-white/62">Pick a support topic and we will guide the user from there.</p>
+            {supportTopics.map((topic) => (
+              <button
+                key={topic}
+                type="button"
+                onClick={() => {
+                  setPanelState(null);
+                  onAction(`${topic} opened. A support flow can continue from here.`);
+                }}
+                className="flex w-full items-center justify-between rounded-[1.2rem] bg-[#171a20] px-4 py-4 text-left"
+              >
+                <span className="text-base font-semibold text-white">{topic}</span>
+                <span className="text-white/42">&gt;</span>
+              </button>
+            ))}
+          </div>
+        </SettingsModalShell>
       ) : null}
     </div>
   );
@@ -3798,6 +3887,30 @@ function SettingsSelectSheet({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="absolute inset-0 z-[151] bg-black/72 backdrop-blur-sm">
+      <div className="absolute inset-x-0 bottom-0 rounded-t-[2rem] border-t border-white/10 bg-[#101216] p-4 shadow-[0_-20px_60px_rgba(0,0,0,0.45)]">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-2xl font-black text-white">{title}</h3>
+          <button type="button" onClick={onClose} className="rounded-full bg-white/8 px-4 py-2 text-sm font-bold text-white">Done</button>
+        </div>
+        <div className="mt-4 max-h-[55vh] overflow-y-auto pb-2">
+          {children}
         </div>
       </div>
     </div>
