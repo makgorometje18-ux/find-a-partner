@@ -3463,9 +3463,9 @@ function PartnerSettingsSheet({
           <div className="space-y-4">
             <div className="grid gap-3">
               {[
-                { tier: "platinum" as const, title: "tinder platinum", subtitle: "Priority Likes, See who likes you & more", accent: "text-stone-100" },
-                { tier: "gold" as const, title: "tinder gold", subtitle: "See who likes you & more", accent: "text-amber-300" },
-                { tier: "plus" as const, title: "tinder+", subtitle: "Unlimited Likes & more", accent: "text-rose-400" },
+                { tier: "platinum" as const, title: "OBE-E platinum", subtitle: "Priority Likes, See who likes you & more", accent: "text-stone-100" },
+                { tier: "gold" as const, title: "OBE-E gold", subtitle: "See who likes you & more", accent: "text-amber-300" },
+                { tier: "plus" as const, title: "OBE-E+", subtitle: "Unlimited Likes & more", accent: "text-rose-400" },
               ].map((tier) => (
                 <button
                   key={tier.tier}
@@ -3636,7 +3636,7 @@ function PartnerSettingsSheet({
               <ToggleRow label="Email" checked={appSettings.emailUpdates} onChange={(value) => onAppSettingsChange({ emailUpdates: value })} />
               <ToggleRow label="Push Notifications" checked={appSettings.pushNotifications} onChange={(value) => onAppSettingsChange({ pushNotifications: value })} />
               <ToggleRow label="SMS" checked={appSettings.smsUpdates} onChange={(value) => onAppSettingsChange({ smsUpdates: value })} />
-              <ToggleRow label="Team Tinder" checked={appSettings.teamPartnerUpdates} onChange={(value) => onAppSettingsChange({ teamPartnerUpdates: value })} />
+              <ToggleRow label="Team OBE-E" checked={appSettings.teamPartnerUpdates} onChange={(value) => onAppSettingsChange({ teamPartnerUpdates: value })} />
               <button type="button" onClick={onRequestPermissions} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left text-sm font-bold">Request browser notification permission</button>
             </SettingsSection>
 
@@ -3854,7 +3854,7 @@ function LikeLimitModal({
           <button type="button" onClick={onClose} className="text-3xl font-light text-white">x</button>
           <div className="flex items-center gap-2">
             <FlameTabIcon className="h-8 w-8 text-amber-300" />
-            <p className="text-3xl font-black lowercase tracking-tight">tinder</p>
+            <p className="text-3xl font-black tracking-tight">OBE-E</p>
             <span className="rounded-md bg-amber-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">gold</span>
           </div>
         </div>
@@ -3889,7 +3889,7 @@ function LikeLimitModal({
           </div>
 
           <div className="mt-7 rounded-[1.3rem] border border-white/14 bg-[#15161b] p-5">
-            <p className="inline-flex rounded-full border border-white/12 bg-black/18 px-3 py-1 text-xs text-white/70">Included with Tinder Gold</p>
+            <p className="inline-flex rounded-full border border-white/12 bg-black/18 px-3 py-1 text-xs text-white/70">Included with OBE-E Gold</p>
             <div className="mt-5 grid gap-4">
               {features.map((feature) => (
                 <div key={feature} className="flex items-start gap-3">
