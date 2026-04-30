@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, type RefObject, type SVGProps, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GameLogo } from "@/components/game-logo";
 import { requestNotificationPermission, showSystemNotification } from "@/lib/browser-notifications";
 import { supabase } from "@/lib/supabase";
@@ -148,6 +148,10 @@ type PartnerAppSettings = {
   smsUpdates: boolean;
   teamPartnerUpdates: boolean;
 };
+type DailyLikeUsage = {
+  date: string;
+  count: number;
+};
 type PartnerUserControls = {
   muted?: boolean;
   blocked?: boolean;
@@ -208,7 +212,9 @@ const sortPair = (first: string, second: string) => (first < second ? [first, se
 const summaryKey = (userId: string) => `dating-notification-summary:${userId}`;
 const safetySettingsKey = (userId: string) => `dating-safety-settings:${userId}`;
 const appSettingsKey = (userId: string) => `dating-app-settings:${userId}`;
+const likeUsageKey = (userId: string) => `dating-like-usage:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
+const dailyLikeLimit = 20;
 const defaultSafetySettings: PartnerSafetySettings = {
   messageNotifications: true,
   quietMode: false,
@@ -291,6 +297,7 @@ const settingsGenderTargets = {
   Everyone: [],
 } satisfies Record<PartnerAppSettings["interestedIn"], string[]>;
 const activeChatLimit = 5;
+const premiumUnlimitedTiers: PremiumTier[] = ["plus", "gold", "platinum"];
 const voiceAudioConstraints: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 const isProfileVerified = (profile?: Pick<DatingProfile, "contact_verified" | "profile_verified" | "is_photo_verified" | "selfie_url">) =>
   Boolean(profile?.contact_verified || profile?.profile_verified || (profile?.is_photo_verified && profile.selfie_url));
@@ -462,6 +469,19 @@ const formatSentAt = (value?: string | null) => {
     minute: "2-digit",
   });
 };
+const localDayStamp = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  const day = `${now.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const defaultDailyLikeUsage = (): DailyLikeUsage => ({ date: localDayStamp(), count: 0 });
+const normalizeDailyLikeUsage = (usage?: Partial<DailyLikeUsage> | null): DailyLikeUsage => {
+  const today = localDayStamp();
+  if (!usage?.date || usage.date !== today) return { date: today, count: 0 };
+  return { date: today, count: Math.max(0, usage.count || 0) };
+};
 
 const sortMessagesByCreatedAt = (rows: MessageRow[]) =>
   [...rows].sort((first, second) => new Date(first.created_at).getTime() - new Date(second.created_at).getTime());
@@ -504,6 +524,8 @@ export default function PartnerScenePage() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [safetySettings, setSafetySettings] = useState<PartnerSafetySettings>(defaultSafetySettings);
   const [appSettings, setAppSettings] = useState<PartnerAppSettings>(defaultPartnerAppSettings);
+  const [dailyLikeUsage, setDailyLikeUsage] = useState<DailyLikeUsage>(defaultDailyLikeUsage);
+  const [showLikeLimitModal, setShowLikeLimitModal] = useState(false);
   const [userControls, setUserControls] = useState<Record<string, PartnerUserControls>>({});
   const [activeLounge, setActiveLounge] = useState("Serious Relationship");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -563,6 +585,15 @@ export default function PartnerScenePage() {
       const next = { ...current, ...changes };
       if (player && typeof window !== "undefined") {
         window.localStorage.setItem(appSettingsKey(player.id), JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+  const updateDailyLikeUsage = (updater: DailyLikeUsage | ((current: DailyLikeUsage) => DailyLikeUsage)) => {
+    setDailyLikeUsage((current) => {
+      const next = typeof updater === "function" ? updater(normalizeDailyLikeUsage(current)) : normalizeDailyLikeUsage(updater);
+      if (player && typeof window !== "undefined") {
+        window.localStorage.setItem(likeUsageKey(player.id), JSON.stringify(next));
       }
       return next;
     });
@@ -887,6 +918,18 @@ export default function PartnerScenePage() {
       }
     }
 
+    const storedLikeUsage = window.localStorage.getItem(likeUsageKey(player.id));
+    if (!storedLikeUsage) {
+      setDailyLikeUsage(defaultDailyLikeUsage());
+    } else {
+      try {
+        setDailyLikeUsage(normalizeDailyLikeUsage(JSON.parse(storedLikeUsage) as DailyLikeUsage));
+      } catch {
+        window.localStorage.removeItem(likeUsageKey(player.id));
+        setDailyLikeUsage(defaultDailyLikeUsage());
+      }
+    }
+
     const storedControls = window.localStorage.getItem(userControlsKey(player.id));
     if (!storedControls) {
       setUserControls({});
@@ -920,6 +963,10 @@ export default function PartnerScenePage() {
     mediaQuery.addEventListener("change", syncMode);
     return () => mediaQuery.removeEventListener("change", syncMode);
   }, [appSettings.appearance]);
+
+  useEffect(() => {
+    updateDailyLikeUsage((current) => normalizeDailyLikeUsage(current));
+  }, [player]);
 
   useEffect(() => {
     if (!player) return;
@@ -1257,6 +1304,10 @@ export default function PartnerScenePage() {
   }, [matches.length, player]);
 
   const ownDatingProfile = player ? profileMap[player.id] : null;
+  const normalizedLikeUsage = normalizeDailyLikeUsage(dailyLikeUsage);
+  const hasUnlimitedLikes = premiumUnlimitedTiers.includes(appSettings.premiumTier);
+  const likesRemainingToday = hasUnlimitedLikes ? Number.POSITIVE_INFINITY : Math.max(0, dailyLikeLimit - normalizedLikeUsage.count);
+  const canLikeToday = hasUnlimitedLikes || likesRemainingToday > 0;
   const visiblePartnerProfiles = useMemo(
     () =>
       profiles.filter((profile) => {
@@ -1868,6 +1919,11 @@ export default function PartnerScenePage() {
 
   const likeSpecificProfile = async (profile: DatingProfile, superLike = false) => {
     if (!player) return;
+    if (!hasUnlimitedLikes && !canLikeToday) {
+      setShowLikeLimitModal(true);
+      setStatus("You have reached your daily like limit. Upgrade for more likes or come back tomorrow.");
+      return;
+    }
     setSaving(true);
     setError("");
 
@@ -1903,6 +1959,9 @@ export default function PartnerScenePage() {
       }
 
       setLikedIds((current) => [...new Set([...current, profile.user_id])]);
+      if (!alreadyLiked && !hasUnlimitedLikes) {
+        updateDailyLikeUsage((current) => ({ ...normalizeDailyLikeUsage(current), count: normalizeDailyLikeUsage(current).count + 1 }));
+      }
 
       if (mutualLike) {
         const [userA, userB] = sortPair(player.id, profile.user_id);
@@ -1927,6 +1986,11 @@ export default function PartnerScenePage() {
       } else {
         setStatus(superLike ? `You gave ${profile.display_name} a strong like.` : `You liked ${profile.display_name}.`);
         if (currentProfile?.user_id === profile.user_id) advanceStack();
+      }
+
+      if (!alreadyLiked && !hasUnlimitedLikes && likesRemainingToday === 1) {
+        setShowLikeLimitModal(true);
+        setStatus("You have hit your daily like limit. Upgrade for more likes or return tomorrow.");
       }
     } catch (likeError) {
       console.error("Dating like failed", likeError);
@@ -2715,11 +2779,11 @@ export default function PartnerScenePage() {
 
       {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#0b0d11]/96 px-4 py-3 text-xs text-white/65 shadow-[0_-18px_45px_rgba(0,0,0,0.45)] backdrop-blur">
         {[
-          { id: "swipe", label: "Swipe", icon: "S" },
-          { id: "explore", label: "Explore", icon: "E" },
-          { id: "likes", label: "Likes", icon: "L" },
-          { id: "chat", label: "Chat", icon: "C" },
-          { id: "profile", label: "Profile", icon: "P" },
+          { id: "swipe", label: "Swipe", icon: <FlameTabIcon /> },
+          { id: "explore", label: "Explore", icon: <CompassTabIcon /> },
+          { id: "likes", label: "Likes", icon: <HeartTabIcon /> },
+          { id: "chat", label: "Chat", icon: <ChatTabIcon /> },
+          { id: "profile", label: "Profile", icon: <ProfileTabIcon /> },
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id as AppTab)} className="flex min-w-[3.8rem] flex-col items-center gap-1 rounded-2xl px-2 py-1.5">
             <span className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-sm font-black shadow-lg transition ${
@@ -2781,6 +2845,19 @@ export default function PartnerScenePage() {
           }}
           onAction={(message) => setStatus(message)}
           onLogout={() => void logout()}
+        />
+      ) : null}
+      {showLikeLimitModal ? (
+        <LikeLimitModal
+          premiumTier={appSettings.premiumTier}
+          likesUsed={normalizedLikeUsage.count}
+          likesLimit={dailyLikeLimit}
+          onClose={() => setShowLikeLimitModal(false)}
+          onSelectTier={(tier) => {
+            updateAppSettings({ premiumTier: tier });
+            setShowLikeLimitModal(false);
+            setStatus(`${tier.charAt(0).toUpperCase() + tier.slice(1)} unlocked. Your like limit is now upgraded.`);
+          }}
         />
       ) : null}
     </main>
@@ -3030,20 +3107,20 @@ function SwipeCard({
         </div>
 
         <div className="grid grid-cols-5 gap-3 px-4 py-4">
-          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-xl font-black text-amber-400 shadow-xl">
-            O
+          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-amber-400 shadow-xl">
+            <RewindIcon />
           </button>
-          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-3xl font-black text-pink-500 shadow-xl">
-            X
+          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-pink-500 shadow-xl">
+            <CloseIcon />
           </button>
-          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-3xl font-black text-sky-400 shadow-xl disabled:opacity-60">
-            *
+          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-400 shadow-xl disabled:opacity-60">
+            <StarBadgeIcon />
           </button>
-          <button onClick={onLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#c7f464] text-3xl font-black text-emerald-950 shadow-xl disabled:opacity-60">
-            H
+          <button onClick={onLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#c7f464] text-emerald-950 shadow-xl disabled:opacity-60">
+            <HeartSolidIcon />
           </button>
-          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-3xl font-black text-sky-500 shadow-xl disabled:opacity-60">
-            Go
+          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-500 shadow-xl disabled:opacity-60">
+            <SendPlaneIcon />
           </button>
         </div>
       </div>
@@ -3408,10 +3485,10 @@ function PartnerSettingsSheet({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <FeaturePromoCard title="Get Super Likes" accent="text-sky-400" active={appSettings.premiumTier === "platinum"} onClick={() => onAction("Super Likes are ready for premium profiles.")} />
-              <FeaturePromoCard title="Get Boosts" accent="text-violet-400" active={appSettings.premiumTier !== "plus"} onClick={() => onAction("Boost controls are available in your premium center.")} />
-              <FeaturePromoCard title="Go Incognito" accent="text-white/82" active={appSettings.visibilityMode === "incognito"} onClick={() => onAppSettingsChange({ visibilityMode: "incognito" })} />
-              <FeaturePromoCard title="Passport Mode" accent="text-rose-400" active={appSettings.globalMode} onClick={() => onAppSettingsChange({ globalMode: !appSettings.globalMode })} />
+              <FeaturePromoCard title="Get Super Likes" accent="text-sky-400" icon={<StarBadgeIcon className="h-7 w-7" />} active={appSettings.premiumTier === "platinum"} onClick={() => onAction("Super Likes are ready for premium profiles.")} />
+              <FeaturePromoCard title="Get Boosts" accent="text-violet-400" icon={<BoltBadgeIcon className="h-7 w-7" />} active={appSettings.premiumTier !== "plus"} onClick={() => onAction("Boost controls are available in your premium center.")} />
+              <FeaturePromoCard title="Go Incognito" accent="text-white/82" icon={<IncognitoIcon className="h-7 w-7" />} active={appSettings.visibilityMode === "incognito"} onClick={() => onAppSettingsChange({ visibilityMode: "incognito" })} />
+              <FeaturePromoCard title="Passport Mode" accent="text-rose-400" icon={<SendPlaneIcon className="h-7 w-7" />} active={appSettings.globalMode} onClick={() => onAppSettingsChange({ globalMode: !appSettings.globalMode })} />
             </div>
 
             <SettingsSection title="Account Settings">
@@ -3719,19 +3796,133 @@ function SegmentedButtons({
 function FeaturePromoCard({
   title,
   accent,
+  icon,
   active,
   onClick,
 }: {
   title: string;
   accent: string;
+  icon: ReactNode;
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button type="button" onClick={onClick} className={`rounded-[1.8rem] border px-4 py-5 text-left ${active ? "border-white/18 bg-[#17191f]" : "border-white/8 bg-[#121419]"}`}>
-      <div className={`text-2xl font-black ${accent}`}>★</div>
+      <div className={`${accent}`}>{icon}</div>
       <p className={`mt-4 text-lg font-semibold ${active ? "text-white" : "text-white/84"}`}>{title}</p>
     </button>
+  );
+}
+
+function LikeLimitModal({
+  premiumTier,
+  likesUsed,
+  likesLimit,
+  onClose,
+  onSelectTier,
+}: {
+  premiumTier: PremiumTier;
+  likesUsed: number;
+  likesLimit: number;
+  onClose: () => void;
+  onSelectTier: (tier: PremiumTier) => void;
+}) {
+  const plans = [
+    { tier: "gold" as const, label: "1 Week", price: "R259,99 total", badge: "Popular" },
+    { tier: "platinum" as const, label: "1 Month", price: "R132,20/wk", badge: "Best value" },
+    { tier: "plus" as const, label: "Starter", price: "R89,99 total", badge: "Easy start" },
+  ];
+  const selectedPlan = plans.find((plan) => plan.tier === premiumTier) || plans[0];
+  const features = [
+    "Unlimited Likes",
+    "See Who Likes You",
+    "Unlimited Rewinds",
+    "1 Free Boost per month",
+    "2 Free Super Likes per week",
+    "Unlimited Passport Mode",
+    "Top Picks",
+    "Control Your Profile",
+    "Control Who Sees You",
+    "Control Who You See",
+    "Hide Ads",
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[140] bg-black/92 text-white backdrop-blur">
+      <div className="mx-auto flex h-dvh w-full max-w-md flex-col bg-[#111216]">
+        <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+          <button type="button" onClick={onClose} className="text-3xl font-light text-white">x</button>
+          <div className="flex items-center gap-2">
+            <FlameTabIcon className="h-8 w-8 text-amber-300" />
+            <p className="text-3xl font-black lowercase tracking-tight">tinder</p>
+            <span className="rounded-md bg-amber-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">gold</span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
+          <h2 className="max-w-sm text-[2.35rem] font-black leading-[1.05]">Unlimited Likes. Send as many likes as you want.</h2>
+          <p className="mt-3 text-sm text-white/62">You have used {likesUsed}/{likesLimit} free likes today.</p>
+
+          <p className="mt-8 text-xl font-semibold">Select a Plan</p>
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+            {plans.map((plan) => (
+              <button
+                key={plan.tier}
+                type="button"
+                onClick={() => onSelectTier(plan.tier)}
+                className={`min-w-[14.5rem] rounded-[1.2rem] border p-4 text-left ${premiumTier === plan.tier ? "border-amber-300 bg-[#17181d]" : "border-white/12 bg-[#131419]"}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-sm font-semibold text-amber-300">{plan.badge}</span>
+                  {premiumTier === plan.tier ? <span className="text-2xl font-black text-amber-300">✓</span> : null}
+                </div>
+                <p className="mt-4 text-[2rem] font-black">{plan.label}</p>
+                <p className="mt-8 text-2xl font-semibold text-white/86">{plan.price}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 flex items-center justify-center gap-4 text-white/35">
+            <span className="h-2.5 w-2.5 rounded-full bg-white" />
+            <span className="h-2.5 w-2.5 rounded-full bg-white/25" />
+            <span className="h-2.5 w-2.5 rounded-full bg-white/25" />
+          </div>
+
+          <div className="mt-7 rounded-[1.3rem] border border-white/14 bg-[#15161b] p-5">
+            <p className="inline-flex rounded-full border border-white/12 bg-black/18 px-3 py-1 text-xs text-white/70">Included with Tinder Gold</p>
+            <div className="mt-5 grid gap-4">
+              {features.map((feature) => (
+                <div key={feature} className="flex items-start gap-3">
+                  <span className="mt-1 text-2xl font-black text-white">✓</span>
+                  <div>
+                    <p className="text-xl font-semibold leading-6">{feature}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="mt-5 text-xs leading-5 text-white/62">
+            By tapping Continue, you will be charged, your subscription will auto-renew for the same price and package length until you cancel via your Play Store settings, and you agree to our Terms.
+          </p>
+        </div>
+
+        <div className="border-t border-white/10 bg-[#111216] px-4 pb-5 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <FlameTabIcon className="h-7 w-7 text-amber-300" />
+              <div>
+                <p className="text-lg font-semibold">{selectedPlan.label}</p>
+                <p className="text-2xl font-black text-white/92">{selectedPlan.price}</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => onSelectTier(selectedPlan.tier)} className="rounded-full bg-amber-300 px-8 py-4 text-xl font-black text-slate-950">
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3791,6 +3982,54 @@ function ChatListButton({
       ) : null}
     </button>
   );
+}
+
+function FlameTabIcon({ className = "h-5 w-5", ...props }: { className?: string } & SVGProps<SVGSVGElement>) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true" {...props}><path d="M13.3 2.3c.3 2.5-.8 4.2-2.2 5.7-1.2 1.3-2.3 2.6-2.3 4.6 0 1.8 1.5 3.3 3.4 3.3 2.5 0 4.2-2 4.2-4.7 0-1.8-.8-3.4-2-4.9 2.7 1 5.3 4.1 5.3 7.9 0 4.4-3.3 7.8-8 7.8-4.6 0-7.8-3.1-7.8-7.4 0-2.8 1.2-5.1 3.3-7.1 1.4-1.4 3-2.5 4.3-5.2h1.8z" /></svg>;
+}
+
+function CompassTabIcon({ className = "h-5 w-5", ...props }: { className?: string } & SVGProps<SVGSVGElement>) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true" {...props}><circle cx="12" cy="12" r="8.5" /><path d="m14.9 9.1-1.8 5.2-5.2 1.8 1.8-5.2 5.2-1.8z" fill="currentColor" stroke="none" /></svg>;
+}
+
+function HeartTabIcon({ className = "h-5 w-5", ...props }: { className?: string } & SVGProps<SVGSVGElement>) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true" {...props}><path d="M12 21.4 10.6 20C5.1 15 2 12.1 2 8.5 2 5.6 4.3 3.3 7.2 3.3c1.6 0 3.1.8 4 2 1-1.2 2.5-2 4.1-2 2.9 0 5.2 2.3 5.2 5.2 0 3.6-3.1 6.5-8.6 11.5L12 21.4z" /></svg>;
+}
+
+function ChatTabIcon({ className = "h-5 w-5", ...props }: { className?: string } & SVGProps<SVGSVGElement>) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true" {...props}><path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v6A3.5 3.5 0 0 1 15.5 16H10l-4 4v-4.4A3.5 3.5 0 0 1 5 12.5v-6z" /></svg>;
+}
+
+function ProfileTabIcon({ className = "h-5 w-5", ...props }: { className?: string } & SVGProps<SVGSVGElement>) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true" {...props}><circle cx="12" cy="8" r="3.4" /><path d="M5 20c.9-3.1 3.6-5 7-5s6.1 1.9 7 5" /></svg>;
+}
+
+function RewindIcon({ className = "h-6 w-6" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={className} aria-hidden="true"><path d="M7 8H3V4" /><path d="M4 8a8 8 0 1 1-1.4 7.7" /></svg>;
+}
+
+function CloseIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" className={className} aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" /></svg>;
+}
+
+function StarBadgeIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="m12 2.7 2.7 5.5 6 .9-4.4 4.3 1 6-5.3-2.8-5.4 2.8 1-6L3.3 9l6-.9L12 2.7z" /></svg>;
+}
+
+function HeartSolidIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M12 21.4 10.6 20C5.1 15 2 12.1 2 8.5 2 5.6 4.3 3.3 7.2 3.3c1.6 0 3.1.8 4 2 1-1.2 2.5-2 4.1-2 2.9 0 5.2 2.3 5.2 5.2 0 3.6-3.1 6.5-8.6 11.5L12 21.4z" /></svg>;
+}
+
+function SendPlaneIcon({ className = "h-6 w-6" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M21.7 3.1 2.9 10.8c-.9.4-.8 1.7.1 2l6.8 2.3 2.3 6.8c.3.9 1.6 1 2 .1l7.7-18.8c.3-.8-.5-1.6-1.3-1.3zM10.7 14.2l8-8-6 9.2-.7 3.2-1.3-4.4z" /></svg>;
+}
+
+function BoltBadgeIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M13.4 2 5.7 13h4l-1 9L18.3 11h-4L13.4 2z" /></svg>;
+}
+
+function IncognitoIcon({ className = "h-7 w-7" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true"><path d="m3 8 2-3h14l2 3" /><path d="M7 16a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm10 0a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" /><path d="M9.5 13h5" /></svg>;
 }
 
 function PhoneIcon({ className = "h-5 w-5" }: { className?: string }) {
