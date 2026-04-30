@@ -152,6 +152,12 @@ type DailyLikeUsage = {
   date: string;
   count: number;
 };
+type SettingsSelectorState = {
+  key: keyof PartnerAppSettings;
+  label: string;
+  options: string[];
+  multi?: boolean;
+} | null;
 type PartnerUserControls = {
   muted?: boolean;
   blocked?: boolean;
@@ -3440,12 +3446,50 @@ function PartnerSettingsSheet({
   onLogout: () => void;
 }) {
   const preferenceChoices = ["Music", "Gym", "Travel", "Cooking", "Business", "Faith", "Gaming", "Movies"];
+  const southAfricanLanguages = ["English", "Afrikaans", "isiZulu", "isiXhosa", "Sepedi", "Setswana", "Sesotho", "Xitsonga", "siSwati", "Tshivenda", "isiNdebele"];
+  const selectorCatalog: Array<{ label: string; key: keyof PartnerAppSettings; options: string[]; multi?: boolean }> = [
+    { label: "Looking for", key: "lookingFor", options: ["Long-term partner", "Life partner", "Serious relationship", "Casual dating", "New friends", "Networking"] },
+    { label: "Add languages", key: "languages", options: southAfricanLanguages, multi: true },
+    { label: "Zodiac", key: "zodiac", options: ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"] },
+    { label: "Education", key: "educationLevel", options: ["High School", "College", "University", "Postgraduate", "Trade School", "Self-taught"] },
+    { label: "Family Plans", key: "familyPlans", options: ["Want children", "Open to children", "Do not want children", "Have children", "Prefer not to say"] },
+    { label: "Communication Style", key: "communicationStyle", options: ["Daily check-ins", "Balanced", "Deep conversations", "Playful texting", "Voice notes first"] },
+    { label: "Love Style", key: "loveStyle", options: ["Affectionate", "Quality time", "Acts of service", "Words of affirmation", "Independent but loyal"] },
+    { label: "Pets", key: "pets", options: ["Dog lover", "Cat lover", "Pet-friendly", "No pets", "Allergic to pets"] },
+    { label: "Drinking", key: "drinkingPreference", options: ["Never", "Socially", "Sometimes", "Often", "Sober"] },
+    { label: "Smoking", key: "smokingPreference", options: ["No", "Sometimes", "Yes", "Trying to quit"] },
+    { label: "Workout", key: "workoutHabit", options: ["Every day", "A few times a week", "Weekends", "Occasionally", "Not my thing"] },
+    { label: "Social Media", key: "socialMediaHandle", options: ["Instagram", "TikTok", "Facebook", "X", "Snapchat", "LinkedIn", "No social media"] },
+  ];
   const locationLabel = profile?.location_label || profile?.city || appSettings.locationName;
+  const [selectorState, setSelectorState] = useState<SettingsSelectorState>(null);
   const toggleInterest = (value: string) => {
     const next = appSettings.interestsSelection.includes(value)
       ? appSettings.interestsSelection.filter((item) => item !== value)
       : [...appSettings.interestsSelection, value];
     onAppSettingsChange({ interestsSelection: next });
+  };
+  const displayValueForKey = (key: keyof PartnerAppSettings) => {
+    const value = appSettings[key];
+    if (Array.isArray(value)) return value.length ? value.join(", ") : "Select";
+    return value ? String(value) : "Select";
+  };
+  const openSelector = (label: string, key: keyof PartnerAppSettings) => {
+    const match = selectorCatalog.find((item) => item.label === label && item.key === key);
+    if (!match) return;
+    setSelectorState({ key: match.key, label: match.label, options: match.options, multi: match.multi });
+  };
+  const updateSelectorValue = (option: string) => {
+    if (!selectorState) return;
+    const currentValue = appSettings[selectorState.key];
+    if (selectorState.multi) {
+      const currentItems = Array.isArray(currentValue) ? currentValue : [];
+      const nextItems = currentItems.includes(option) ? currentItems.filter((item) => item !== option) : [...currentItems, option];
+      onAppSettingsChange({ [selectorState.key]: nextItems } as Partial<PartnerAppSettings>);
+      return;
+    }
+    onAppSettingsChange({ [selectorState.key]: option } as Partial<PartnerAppSettings>);
+    setSelectorState(null);
   };
 
   return (
@@ -3560,28 +3604,12 @@ function PartnerSettingsSheet({
                   ))}
                 </div>
               </div>
-              {[
-                ["Looking for", "lookingFor"],
-                ["Add languages", "languages"],
-                ["Zodiac", "zodiac"],
-                ["Education", "educationLevel"],
-                ["Family Plans", "familyPlans"],
-                ["Communication Style", "communicationStyle"],
-                ["Love Style", "loveStyle"],
-                ["Pets", "pets"],
-                ["Drinking", "drinkingPreference"],
-                ["Smoking", "smokingPreference"],
-                ["Workout", "workoutHabit"],
-                ["Social Media", "socialMediaHandle"],
-              ].map(([label, key]) => (
+              {selectorCatalog.map(({ label, key }) => (
                 <InfoRow
                   key={label}
                   label={label}
-                  value={Array.isArray(appSettings[key as keyof PartnerAppSettings]) ? "Selected" : String(appSettings[key as keyof PartnerAppSettings] || "Select")}
-                  onClick={() => {
-                    const nextValue = label === "Add languages" ? ["English", "Xitsonga"] : label === "Looking for" ? "Long-term partner" : "Selected";
-                    onAppSettingsChange({ [key]: nextValue } as Partial<PartnerAppSettings>);
-                  }}
+                  value={displayValueForKey(key)}
+                  onClick={() => openSelector(label, key)}
                 />
               ))}
             </SettingsSection>
@@ -3660,6 +3688,16 @@ function PartnerSettingsSheet({
           </div>
         </div>
       </div>
+      {selectorState ? (
+        <SettingsSelectSheet
+          title={selectorState.label}
+          options={selectorState.options}
+          multi={Boolean(selectorState.multi)}
+          selectedValue={appSettings[selectorState.key]}
+          onClose={() => setSelectorState(null)}
+          onSelect={updateSelectorValue}
+        />
+      ) : null}
     </div>
   );
 }
@@ -3710,8 +3748,59 @@ function InfoRow({ label, value, onClick }: { label: string; value: string; onCl
   return (
     <button type="button" onClick={onClick} className="flex items-center justify-between rounded-[1.6rem] bg-[#15171d] px-4 py-4 text-left">
       <span className="text-lg font-medium text-white">{label}</span>
-      <span className="text-base text-white/56">{value} &gt;</span>
+      <span className="max-w-[52%] truncate text-right text-base text-white/56">{value} &gt;</span>
     </button>
+  );
+}
+
+function SettingsSelectSheet({
+  title,
+  options,
+  multi,
+  selectedValue,
+  onClose,
+  onSelect,
+}: {
+  title: string;
+  options: string[];
+  multi: boolean;
+  selectedValue: PartnerAppSettings[keyof PartnerAppSettings];
+  onClose: () => void;
+  onSelect: (option: string) => void;
+}) {
+  const selectedItems = Array.isArray(selectedValue) ? selectedValue : [];
+  const singleSelected = typeof selectedValue === "string" ? selectedValue : "";
+
+  return (
+    <div className="absolute inset-0 z-[150] bg-black/70 backdrop-blur-sm">
+      <div className="absolute inset-x-0 bottom-0 rounded-t-[2rem] border-t border-white/10 bg-[#101216] p-4 shadow-[0_-20px_60px_rgba(0,0,0,0.45)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-white/40">Select</p>
+            <h3 className="mt-1 text-2xl font-black text-white">{title}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full bg-white/8 px-4 py-2 text-sm font-bold text-white">Done</button>
+        </div>
+        <div className="mt-4 max-h-[55vh] space-y-2 overflow-y-auto pb-2">
+          {options.map((option) => {
+            const active = multi ? selectedItems.includes(option) : singleSelected === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onSelect(option)}
+                className={`flex w-full items-center justify-between rounded-[1.3rem] px-4 py-4 text-left transition ${
+                  active ? "bg-rose-500/16 text-white ring-1 ring-rose-400/50" : "bg-[#171a20] text-white/82"
+                }`}
+              >
+                <span className="text-base font-semibold">{option}</span>
+                <span className={`text-xl font-black ${active ? "text-rose-400" : "text-white/18"}`}>✓</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
