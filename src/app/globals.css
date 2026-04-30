@@ -277,3 +277,83 @@ button:disabled {
   width: 148px;
   height: 148px;
 }
+
+@keyframes match-heart-float {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.92);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate3d(10px, -30px, 0) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-8px, -90px, 0) scale(0.86);
+    opacity: 0;
+  }
+}
+
+@keyframes match-heart-stack-breathe {
+  0%,
+  100% {
+    transform: scale(0.98);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.03);
+    filter: brightness(1.08);
+  }
+}
+
+.match-floating-heart {
+  position: absolute;
+  line-height: 1;
+  text-shadow: 0 8px 22px rgba(114, 5, 27, 0.28);
+  animation-name: match-heart-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+.match-heart-stack {
+  width: min(74vw, 24rem);
+  aspect-ratio: 1.12 / 0.74;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.3), transparent 18%),
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.16), transparent 28%),
+    linear-gradient(180deg, #9ef86f 0%, #62dc43 100%);
+  clip-path: path("M 200 66 C 183 28 139 16 108 35 C 88 47 78 66 78 66 C 78 66 68 47 48 35 C 17 16 -27 28 -44 66 C -66 117 -16 170 78 234 C 172 170 222 117 200 66 Z");
+  opacity: 0.98;
+  box-shadow:
+    0 24px 54px rgba(6, 79, 30, 0.22),
+    inset 0 5px 12px rgba(255, 255, 255, 0.32);
+  animation: match-heart-stack-breathe 4.2s ease-in-out infinite;
+}
+
+.match-heart-stack::before,
+.match-heart-stack::after {
+  content: "";
+  position: absolute;
+  inset: 10% 10% auto;
+  aspect-ratio: 1.12 / 0.74;
+  clip-path: inherit;
+  background: linear-gradient(180deg, rgba(170, 255, 121, 0.96) 0%, rgba(102, 224, 67, 0.94) 100%);
+}
+
+.match-heart-stack::before {
+  inset: 14% 12% auto;
+  opacity: 0.82;
+}
+
+.match-heart-stack::after {
+  inset: 28% 20% auto;
+  opacity: 0.94;
+}
+
+.match-heart-stack-lg {
+  position: relative;
+  height: min(50vw, 16rem);
+}
