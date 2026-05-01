@@ -4600,8 +4600,9 @@ function ChatPanel({
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const [voicePreviewBlob, setVoicePreviewBlob] = useState<Blob | null>(null);
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
-  const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "review">("idle");
+  const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "transcribing" | "review">("idle");
   const [speechTranscriptInterim, setSpeechTranscriptInterim] = useState("");
+  const [serverTranscriptionAvailable, setServerTranscriptionAvailable] = useState<boolean | null>(null);
   const [videoNoteState, setVideoNoteState] = useState<"idle" | "recording" | "preview">("idle");
   const [videoNoteElapsedSeconds, setVideoNoteElapsedSeconds] = useState(0);
   const [videoNotePreviewBlob, setVideoNotePreviewBlob] = useState<Blob | null>(null);
@@ -4609,6 +4610,9 @@ function ChatPanel({
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechRecorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecorderChunksRef = useRef<Blob[]>([]);
+  const speechTranscriptionStreamRef = useRef<MediaStream | null>(null);
   const speechBaseDraftRef = useRef("");
   const latestChatDraftRef = useRef(chatDraft);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -4698,6 +4702,26 @@ function ChatPanel({
   }, [chatDraft]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const checkTranscriptionService = async () => {
+      try {
+        const response = await fetch("/api/transcribe", { cache: "no-store" });
+        if (!response.ok) throw new Error("Transcription service check failed");
+        const payload = (await response.json()) as { available?: boolean };
+        if (!cancelled) setServerTranscriptionAvailable(Boolean(payload.available));
+      } catch {
+        if (!cancelled) setServerTranscriptionAvailable(false);
+      }
+    };
+
+    void checkTranscriptionService();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!chatDraft.trim() && speechToTextState === "review") setSpeechToTextState("idle");
   }, [chatDraft, speechToTextState]);
 
@@ -4720,12 +4744,31 @@ function ChatPanel({
     setReplyingTo(null);
   };
 
+  const stopSpeechRecorder = () => {
+    if (speechRecorderRef.current && speechRecorderRef.current.state !== "inactive") {
+      speechRecorderRef.current.stop();
+    }
+  };
+
   const stopSpeechToText = () => {
+    if (speechRecorderRef.current?.state === "recording") {
+      stopSpeechRecorder();
+      return;
+    }
     speechRecognitionRef.current?.stop();
   };
 
-  const startSpeechToText = () => {
-    if (communicationBlocked) return;
+  const appendTranscriptToDraft = (transcript: string) => {
+    const cleanTranscript = transcript.trim();
+    if (!cleanTranscript) return;
+    const base = speechBaseDraftRef.current.trim();
+    const nextDraft = [base, cleanTranscript].filter(Boolean).join(base && cleanTranscript ? " " : "").trim();
+    setChatDraft(nextDraft);
+    setSpeechToTextState("review");
+    setSpeechTranscriptInterim("");
+  };
+
+  const startBrowserSpeechToText = () => {
     const RecognitionConstructor = getSpeechRecognitionConstructor();
     if (!RecognitionConstructor) {
       closeMenuWithNotice("Speech-to-text is not supported on this device yet. Try Chrome or Edge on a connected device.");
@@ -4796,6 +4839,112 @@ function ChatPanel({
     };
 
     recognition.start();
+  };
+
+  const transcribeRecordedSpeech = async (blob: Blob) => {
+    const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+    const file = new File([blob], `speech-draft.${extension}`, { type: blob.type || "audio/webm" });
+    const formData = new FormData();
+    formData.set("audio", file);
+    formData.set("language", typeof navigator !== "undefined" ? navigator.language || "en-ZA" : "en-ZA");
+
+    try {
+      setSpeechToTextState("transcribing");
+      setSpeechTranscriptInterim("");
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string; fallback?: "browser" | null };
+        if (payload.fallback === "browser") {
+          setServerTranscriptionAvailable(false);
+          closeMenuWithNotice(payload.error || "Server transcription is not configured yet. Using device speech recognition instead.");
+          startBrowserSpeechToText();
+          return;
+        }
+        throw new Error(payload.error || "Transcription failed");
+      }
+
+      const payload = (await response.json()) as { text?: string };
+      appendTranscriptToDraft(payload.text || "");
+    } catch (transcriptionError) {
+      console.error("Could not transcribe speech", transcriptionError);
+      setSpeechToTextState("idle");
+      closeMenuWithNotice("Could not turn that recording into text right now. Please try again.");
+    }
+  };
+
+  const startServerSpeechToText = async () => {
+    if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      startBrowserSpeechToText();
+      return;
+    }
+
+    if (speechRecorderRef.current?.state === "recording") {
+      stopSpeechRecorder();
+      return;
+    }
+
+    try {
+      speechBaseDraftRef.current = chatDraft.trim();
+      setShowAttachMenu(false);
+      setShowEmojiPicker(false);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: voiceAudioConstraints });
+      speechTranscriptionStreamRef.current = stream;
+      const preferredMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
+      speechRecorderRef.current = recorder;
+      speechRecorderChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) speechRecorderChunksRef.current.push(event.data);
+      };
+
+      recorder.onstart = () => {
+        setSpeechToTextState("listening");
+        setSpeechTranscriptInterim("Recording your voice for transcription...");
+      };
+
+      recorder.onerror = () => {
+        setSpeechToTextState("idle");
+        setSpeechTranscriptInterim("");
+        closeMenuWithNotice("Could not capture your voice for transcription. Please try again.");
+      };
+
+      recorder.onstop = () => {
+        const recordedBlob = new Blob(speechRecorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        speechRecorderRef.current = null;
+        speechRecorderChunksRef.current = [];
+        speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
+        speechTranscriptionStreamRef.current = null;
+        if (!recordedBlob.size) {
+          setSpeechToTextState("idle");
+          setSpeechTranscriptInterim("");
+          return;
+        }
+        void transcribeRecordedSpeech(recordedBlob);
+      };
+
+      recorder.start();
+    } catch (recordError) {
+      console.error("Could not start server speech transcription", recordError);
+      startBrowserSpeechToText();
+    }
+  };
+
+  const startSpeechToText = () => {
+    if (communicationBlocked) return;
+    if (speechToTextState === "listening" || speechToTextState === "transcribing") {
+      stopSpeechToText();
+      return;
+    }
+    if (serverTranscriptionAvailable) {
+      void startServerSpeechToText();
+      return;
+    }
+    startBrowserSpeechToText();
   };
 
   const closeMenuWithNotice = (notice: string) => {
@@ -5131,6 +5280,8 @@ function ChatPanel({
       stopVoiceTimer();
       stopVideoNoteTimer();
       speechRecognitionRef.current?.stop();
+      speechRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
       recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoNoteRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
@@ -5703,10 +5854,10 @@ function ChatPanel({
                   <button
                     type="button"
                     onClick={startSpeechToText}
-                    disabled={saving}
+                    disabled={saving || speechToTextState === "transcribing"}
                     className={`rounded-full px-3 py-2 text-xs font-black transition ${speechToTextState === "listening" ? "bg-rose-500 text-white shadow-[0_10px_25px_rgba(244,63,94,0.35)]" : "bg-emerald-500/14 text-emerald-100 hover:bg-emerald-500/22"} disabled:opacity-40`}
                   >
-                    {speechToTextState === "listening" ? "Stop listening" : "Speech to text"}
+                    {speechToTextState === "listening" ? "Stop recording" : speechToTextState === "transcribing" ? "Transcribing..." : "Speech to text"}
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -5728,11 +5879,15 @@ function ChatPanel({
               <div className="rounded-[1.35rem] border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-50">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-black">{speechToTextState === "listening" ? "Listening now..." : "Transcript ready to review"}</p>
+                    <p className="font-black">{speechToTextState === "listening" ? "Listening now..." : speechToTextState === "transcribing" ? "Transcribing your message..." : "Transcript ready to review"}</p>
                     <p className="mt-1 text-xs text-emerald-100/75">
                       {speechToTextState === "listening"
-                        ? "Speak naturally in your device language. The text appears in the message box as we listen."
-                        : "Read the typed message, edit anything you want, then send it."}
+                        ? serverTranscriptionAvailable
+                          ? "Speak naturally. We are recording your voice and sending it for multilingual transcription."
+                          : "Speak naturally in your device language. The text appears in the message box as we listen."
+                        : speechToTextState === "transcribing"
+                          ? "Hold on while we turn your voice into a typed draft."
+                          : "Read the typed message, edit anything you want, then send it."}
                     </p>
                   </div>
                   {speechToTextState === "listening" ? (
@@ -5828,11 +5983,11 @@ function ChatPanel({
             </button>
             <button
               onClick={startSpeechToText}
-              disabled={communicationBlocked}
+              disabled={communicationBlocked || speechToTextState === "transcribing"}
               className={`${chatDraft.trim() && speechToTextState === "idle" ? "hidden" : "flex"} h-12 min-w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500 px-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40`}
               aria-label={speechToTextState === "listening" ? "Stop speech to text" : "Start speech to text"}
             >
-              {speechToTextState === "listening" ? "Stop" : "Talk"}
+              {speechToTextState === "listening" ? "Stop" : speechToTextState === "transcribing" ? "..." : "Talk"}
             </button>
             <button onClick={chatDraft.trim() ? sendCurrentMessage : () => onQuickSend("\u{1F44D}")} disabled={saving || communicationBlocked} className={`${chatDraft.trim() ? "flex" : "hidden"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-60`} aria-label={chatDraft.trim() ? "Send message" : "Send like"}>
               Send
