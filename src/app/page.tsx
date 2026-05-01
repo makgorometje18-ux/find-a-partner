@@ -95,7 +95,7 @@ type DatingReportRow = {
 
 type AppTab = "swipe" | "explore" | "likes" | "chat" | "profile";
 type CallKind = "voice" | "video";
-type CallStatus = "idle" | "calling" | "ringing" | "incoming" | "connecting" | "connected";
+type CallStatus = "idle" | "calling" | "ringing" | "incoming" | "connecting" | "connected" | "unreachable" | "no-answer" | "declined";
 type PartnerSafetySettings = {
   messageNotifications: boolean;
   quietMode: boolean;
@@ -180,6 +180,8 @@ type CallState = {
   matchId: string;
   peerId: string;
   peerName: string;
+  reachedPeer?: boolean;
+  statusMessage?: string;
   error?: string;
 };
 
@@ -566,6 +568,8 @@ export default function PartnerScenePage() {
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneIntervalRef = useRef<number | null>(null);
   const callTimerRef = useRef<number | null>(null);
+  const callReachTimeoutRef = useRef<number | null>(null);
+  const callAnswerTimeoutRef = useRef<number | null>(null);
   const broadcastTypingState = (isTyping: boolean, force = false) => {
     if (!player || !activeMatchId || !typingChannelRef.current) return;
 
@@ -1576,6 +1580,17 @@ export default function PartnerScenePage() {
     setCallDurationSeconds(0);
   };
 
+  const clearCallTimeouts = () => {
+    if (callReachTimeoutRef.current !== null) {
+      window.clearTimeout(callReachTimeoutRef.current);
+      callReachTimeoutRef.current = null;
+    }
+    if (callAnswerTimeoutRef.current !== null) {
+      window.clearTimeout(callAnswerTimeoutRef.current);
+      callAnswerTimeoutRef.current = null;
+    }
+  };
+
   const startCallTimer = () => {
     if (callTimerRef.current !== null) return;
     const startedAt = Date.now();
@@ -1631,6 +1646,7 @@ export default function PartnerScenePage() {
   const endCall = (notifyPeer = true) => {
     stopRingtone();
     stopCallTimer();
+    clearCallTimeouts();
     if (notifyPeer && player && callState) {
       sendCallSignal({
         type: "end",
@@ -1662,7 +1678,21 @@ export default function PartnerScenePage() {
       return;
     }
 
+    const peerPresence = presenceMap[activeMatchProfile.user_id];
+    if (!peerPresence?.is_online) {
+      setCallState({
+        status: "unreachable",
+        kind,
+        matchId: activeMatch.id,
+        peerId: activeMatchProfile.user_id,
+        peerName: activeMatchProfile.display_name,
+        statusMessage: `${activeMatchProfile.display_name} is offline or not connected to the internet right now.`,
+      });
+      return;
+    }
+
     try {
+      clearCallTimeouts();
       const stream = await getCallStream(kind);
       setLocalCallStream(stream);
       const peerConnection = createPeerConnection(activeMatch.id, activeMatchProfile.user_id);
@@ -1674,6 +1704,8 @@ export default function PartnerScenePage() {
         matchId: activeMatch.id,
         peerId: activeMatchProfile.user_id,
         peerName: activeMatchProfile.display_name,
+        reachedPeer: false,
+        statusMessage: `Trying to reach ${activeMatchProfile.display_name}...`,
       });
 
       const offer = await peerConnection.createOffer();
@@ -1687,6 +1719,18 @@ export default function PartnerScenePage() {
         peer_name: player.name || "Your match",
         sdp: offer,
       });
+
+      callReachTimeoutRef.current = window.setTimeout(() => {
+        setCallState((current) => {
+          if (!current || current.matchId !== activeMatch.id || current.peerId !== activeMatchProfile.user_id) return current;
+          if (current.status !== "calling") return current;
+          return {
+            ...current,
+            status: "unreachable",
+            statusMessage: `${activeMatchProfile.display_name}'s device did not confirm the call. They may be offline or disconnected.`,
+          };
+        });
+      }, 6500);
     } catch (callError) {
       console.error("Could not start call", callError);
       setError("Could not start the call. Allow microphone/camera access and try again.");
@@ -1715,7 +1759,8 @@ export default function PartnerScenePage() {
         sdp: answer,
       });
       pendingOfferRef.current = null;
-      setCallState((current) => (current ? { ...current, status: "connected" } : current));
+      clearCallTimeouts();
+      setCallState((current) => (current ? { ...current, status: "connected", reachedPeer: true, statusMessage: "Call connected." } : current));
       startCallTimer();
     } catch (callError) {
       console.error("Could not accept call", callError);
@@ -1724,7 +1769,17 @@ export default function PartnerScenePage() {
     }
   };
 
-  const rejectCall = () => endCall(true);
+  const rejectCall = () => {
+    if (player && callState) {
+      sendCallSignal({
+        type: "decline",
+        match_id: callState.matchId,
+        from: player.id,
+        to: callState.peerId,
+      });
+    }
+    endCall(false);
+  };
 
   const getCallStream = (kind: CallKind) =>
     navigator.mediaDevices.getUserMedia({
@@ -1750,9 +1805,18 @@ export default function PartnerScenePage() {
   }, [callState?.status]);
 
   useEffect(() => {
+    if (!callState || !["unreachable", "no-answer", "declined"].includes(callState.status)) return;
+    clearCallTimeouts();
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    stopCallStreams();
+  }, [callState]);
+
+  useEffect(() => {
     return () => {
       stopRingtone();
       stopCallTimer();
+      clearCallTimeouts();
       void ringtoneContextRef.current?.close();
       ringtoneContextRef.current = null;
     };
@@ -1782,6 +1846,7 @@ export default function PartnerScenePage() {
 
         if (callPayload.type === "offer" && callPayload.sdp && callPayload.kind) {
           const peerProfile = profileMap[callPayload.from || peerId];
+          clearCallTimeouts();
           pendingOfferRef.current = callPayload.sdp;
           setActiveMatchId(match.id);
           setActiveTab("chat");
@@ -1791,6 +1856,8 @@ export default function PartnerScenePage() {
             matchId: match.id,
             peerId: callPayload.from || peerId,
             peerName: callPayload.peer_name || peerProfile?.display_name || "Your match",
+            reachedPeer: true,
+            statusMessage: "The call reached your device.",
           });
           sendCallSignal({
             type: "ringing",
@@ -1802,13 +1869,39 @@ export default function PartnerScenePage() {
         }
 
         if (callPayload.type === "ringing") {
-          setCallState((current) => (current && current.peerId === (callPayload.from || peerId) ? { ...current, status: "ringing" } : current));
+          if (callReachTimeoutRef.current !== null) {
+            window.clearTimeout(callReachTimeoutRef.current);
+            callReachTimeoutRef.current = null;
+          }
+          setCallState((current) =>
+            current && current.peerId === (callPayload.from || peerId)
+              ? {
+                  ...current,
+                  status: "ringing",
+                  reachedPeer: true,
+                  statusMessage: `${current.peerName}'s device is ringing now.`,
+                }
+              : current
+          );
+          callAnswerTimeoutRef.current = window.setTimeout(() => {
+            setCallState((current) => {
+              if (!current || current.peerId !== (callPayload.from || peerId)) return current;
+              if (current.status !== "ringing" && current.status !== "calling") return current;
+              return {
+                ...current,
+                status: "no-answer",
+                reachedPeer: true,
+                statusMessage: `${current.peerName} did not answer the call.`,
+              };
+            });
+          }, 30000);
           return;
         }
 
         if (callPayload.type === "answer" && callPayload.sdp && peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(callPayload.sdp));
-          setCallState((current) => (current ? { ...current, status: "connected" } : current));
+          clearCallTimeouts();
+          setCallState((current) => (current ? { ...current, status: "connected", reachedPeer: true, statusMessage: "Call connected." } : current));
           startCallTimer();
           return;
         }
@@ -1824,6 +1917,21 @@ export default function PartnerScenePage() {
 
         if (callPayload.type === "end") {
           endCall(false);
+          return;
+        }
+
+        if (callPayload.type === "decline") {
+          clearCallTimeouts();
+          setCallState((current) =>
+            current && current.peerId === (callPayload.from || peerId)
+              ? {
+                  ...current,
+                  status: "declined",
+                  reachedPeer: true,
+                  statusMessage: `${current.peerName} declined the call.`,
+                }
+              : current
+          );
         }
       })
       .subscribe();
@@ -5551,6 +5659,8 @@ function CallOverlay({
 }) {
   const isVideo = callState.kind === "video";
   const isIncoming = callState.status === "incoming";
+  const isFailureState = callState.status === "unreachable" || callState.status === "no-answer" || callState.status === "declined";
+  const hasReachedPeer = Boolean(callState.reachedPeer);
   const formatCallDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -5563,51 +5673,101 @@ function CallOverlay({
     callState.status === "incoming"
       ? `Incoming ${isVideo ? "video" : "voice"} call`
       : callState.status === "calling"
-        ? "Calling..."
+        ? "Calling"
         : callState.status === "ringing"
-          ? "Ringing..."
+          ? "Reached their device"
         : callState.status === "connecting"
-          ? "Connecting..."
-          : callDurationSeconds > 0
-            ? formatCallDuration(callDurationSeconds)
-            : "Answered";
+          ? "Connecting"
+          : callState.status === "connected"
+            ? callDurationSeconds > 0
+              ? formatCallDuration(callDurationSeconds)
+              : "Answered"
+            : callState.status === "unreachable"
+              ? "Call not reached"
+              : callState.status === "no-answer"
+                ? "No answer"
+                : "Call declined";
+  const detailLabel =
+    callState.statusMessage ||
+    (callState.status === "incoming"
+      ? `${callState.peerName} is calling you now.`
+      : callState.status === "calling"
+        ? `Trying to connect your ${isVideo ? "video" : "voice"} call...`
+        : callState.status === "ringing"
+          ? `${callState.peerName}'s device is online and ringing.`
+          : callState.status === "connecting"
+            ? "Setting up secure audio and video..."
+            : callState.status === "connected"
+              ? hasReachedPeer
+                ? "Your call is live."
+                : "Call connected."
+              : callState.status === "unreachable"
+                ? `${callState.peerName} is offline or not connected to the internet.`
+                : callState.status === "no-answer"
+                  ? `${callState.peerName} did not answer before the call timed out.`
+                  : `${callState.peerName} declined your call.`);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur">
-      <div className="relative flex h-full max-h-[46rem] w-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#071323] text-white shadow-2xl">
-        <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0b1728] px-5 py-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-sky-200/70">{statusLabel}</p>
-            <h2 className="mt-1 truncate text-2xl font-black">{callState.peerName}</h2>
+    <div className="fixed inset-0 z-[120] overflow-hidden bg-[#040b16] text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(53,112,255,0.35),_transparent_42%),radial-gradient(circle_at_bottom,_rgba(16,185,129,0.2),_transparent_28%)]" />
+      <div className="relative flex h-full flex-col">
+        <div className="flex shrink-0 items-start justify-between px-5 pb-4 pt-8">
+          <div className="max-w-[75%]">
+            <p className="text-[11px] uppercase tracking-[0.38em] text-sky-200/65">{statusLabel}</p>
+            <h2 className="mt-2 truncate text-[2rem] font-black leading-none">{callState.peerName}</h2>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-white/70">{detailLabel}</p>
           </div>
-          <span className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/75">{isVideo ? "Video" : "Voice"}</span>
+          <span className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-bold text-white/80 backdrop-blur-sm">{isVideo ? "Video" : "Voice"}</span>
         </div>
 
-        <div className="relative min-h-0 flex-1 bg-[#030b16]">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
           {isVideo ? (
             <>
-              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full bg-black object-cover" />
+              {remoteStream ? (
+                <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full bg-black object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.22),_transparent_32%),linear-gradient(180deg,#08111f_0%,#030712_100%)] px-8 text-center">
+                  <div>
+                    <div className={`mx-auto flex h-36 w-36 items-center justify-center rounded-full text-6xl font-black shadow-[0_0_90px_rgba(37,99,235,0.35)] ${isFailureState ? "bg-rose-500/18 text-rose-100" : "bg-blue-500/18 text-white"}`}>
+                      {callState.peerName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <p className="mt-8 text-xl font-semibold text-white/88">{hasReachedPeer ? "Connected to their device" : "Waiting for video feed"}</p>
+                    <p className="mt-3 text-sm text-white/58">{detailLabel}</p>
+                  </div>
+                </div>
+              )}
               <video
                 ref={localVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="absolute bottom-4 right-4 h-32 w-24 rounded-2xl border border-white/20 bg-black object-cover shadow-xl"
+                className="absolute bottom-32 right-5 h-36 w-28 rounded-[1.6rem] border border-white/15 bg-black object-cover shadow-[0_18px_50px_rgba(0,0,0,0.45)]"
               />
             </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-blue-600 text-5xl font-black shadow-[0_0_60px_rgba(37,99,235,0.55)]">
+              <div className={`flex h-36 w-36 items-center justify-center rounded-full text-6xl font-black shadow-[0_0_90px_rgba(37,99,235,0.35)] ${isFailureState ? "bg-rose-500/18 text-rose-100" : "bg-blue-500/18 text-white"}`}>
                 {callState.peerName.slice(0, 1).toUpperCase()}
               </div>
-              <p className="mt-6 text-lg font-semibold text-white/80">{callState.status === "connected" ? (callDurationSeconds > 0 ? `Call time ${formatCallDuration(callDurationSeconds)}` : "Answered") : statusLabel}</p>
+              <p className="mt-8 text-2xl font-semibold text-white/92">{statusLabel}</p>
+              <p className="mt-3 max-w-sm text-sm leading-6 text-white/60">{detailLabel}</p>
               <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
               <video ref={localVideoRef} autoPlay playsInline muted className="hidden" />
             </div>
           )}
         </div>
 
-        <div className="shrink-0 border-t border-white/10 bg-[#0b1728] px-5 py-5">
+        <div className="shrink-0 bg-gradient-to-t from-[#040b16] via-[#071323]/95 to-transparent px-5 pb-7 pt-6">
+          {!isIncoming ? (
+            <div className="mb-5 flex items-center justify-center gap-3">
+              <div className={`rounded-full px-4 py-2 text-xs font-bold ${hasReachedPeer ? "bg-emerald-500/16 text-emerald-200" : "bg-white/8 text-white/68"}`}>
+                {hasReachedPeer ? "Reached device" : "Not yet reached"}
+              </div>
+              <div className={`rounded-full px-4 py-2 text-xs font-bold ${callState.status === "connected" ? "bg-blue-500/16 text-blue-100" : "bg-white/8 text-white/68"}`}>
+                {callState.status === "connected" ? "Live call" : isFailureState ? "Call ended" : "Trying connection"}
+              </div>
+            </div>
+          ) : null}
           {isIncoming ? (
             <div className="grid grid-cols-2 gap-3">
               <button onClick={onReject} className="rounded-full bg-rose-600 px-5 py-4 font-black text-white shadow-lg transition hover:bg-rose-500">
@@ -5618,11 +5778,15 @@ function CallOverlay({
               </button>
             </div>
           ) : (
-            <button onClick={onEnd} className="w-full rounded-full bg-rose-600 px-5 py-4 font-black text-white shadow-lg transition hover:bg-rose-500">
-              End Call
-            </button>
+            <div className="mx-auto flex max-w-md items-center gap-4">
+              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/6 px-4 py-3 text-xs font-semibold text-white/65 backdrop-blur-sm">
+                {localStream ? `Mic ${isVideo ? "and camera" : ""} active` : isFailureState ? "Connection closed" : "Preparing media"}
+              </div>
+              <button onClick={onEnd} className="min-w-[11rem] rounded-full bg-rose-600 px-6 py-4 font-black text-white shadow-[0_18px_40px_rgba(225,29,72,0.4)] transition hover:bg-rose-500">
+                {isFailureState ? "Close" : "End Call"}
+              </button>
+            </div>
           )}
-          {localStream ? <p className="mt-3 text-center text-xs font-semibold text-white/45">Mic {isVideo ? "and camera" : ""} are active</p> : null}
         </div>
       </div>
     </div>
