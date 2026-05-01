@@ -185,6 +185,46 @@ type CallState = {
   error?: string;
 };
 
+type BrowserSpeechRecognitionAlternative = {
+  transcript: string;
+};
+
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean;
+  length: number;
+  [index: number]: BrowserSpeechRecognitionAlternative;
+};
+
+type BrowserSpeechRecognitionEvent = Event & {
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+};
+
+type BrowserSpeechRecognitionErrorEvent = Event & {
+  error: string;
+};
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: ((event: Event) => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: ((event: Event) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  }
+}
+
 const baseProgress: Progress = {
   career: "Unemployed",
   reputation: 0,
@@ -225,6 +265,8 @@ const appSettingsKey = (userId: string) => `dating-app-settings:${userId}`;
 const likeUsageKey = (userId: string) => `dating-like-usage:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
 const dailyLikeLimit = 20;
+const getSpeechRecognitionConstructor = () =>
+  typeof window === "undefined" ? null : window.SpeechRecognition || window.webkitSpeechRecognition || null;
 const defaultSafetySettings: PartnerSafetySettings = {
   messageNotifications: true,
   quietMode: false,
@@ -442,6 +484,25 @@ const formatLastSeen = (value?: string | null) => {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+};
+
+const buildSmartReplySuggestions = (rawMessage: string, displayName: string) => {
+  const message = rawMessage.trim();
+  if (!message) return ["Hey", "Tell me more", `Hi ${displayName}`, "Sounds good"];
+  const lower = message.toLowerCase();
+
+  if (/\b(hi|hey|hello|heyy|hallo)\b/.test(lower)) return ["Hey there", "Hi, how are you?", "Hello you", "Nice to hear from you"];
+  if (/\bhow are you|how r u|how you doing|how's it going\b/.test(lower)) return ["I'm good, and you?", "Doing well, thanks", "I'm okay, how are you?", "Better now that you're here"];
+  if (/\b(call|video call|voice call|phone)\b/.test(lower)) return ["Yes, call me", "Give me 5 minutes", "Can we chat here first?", "I'm free now"];
+  if (/\bwhere are you|where you at|location|stay where\b/.test(lower)) return ["I'm at home right now", "I'm nearby", "I'll send my location later", "Where are you?"];
+  if (/\bthank(s| you)\b/.test(lower)) return ["You're welcome", "Anytime", "Of course", "No problem"];
+  if (/\bgood night|gn|sleep well\b/.test(lower)) return ["Good night", "Sleep well too", "Sweet dreams", "Talk tomorrow"];
+  if (/\bgood morning|morning\b/.test(lower)) return ["Good morning", "Morning, hope you slept well", "Have a good day", "Morning you"];
+  if (/\bmiss you|thinking about you\b/.test(lower)) return ["I miss you too", "That's sweet", "I'm thinking about you too", "Come closer then"];
+  if (/\bwhat are you doing|wyd|u up to\b/.test(lower)) return ["Just relaxing", "Working a bit", "Talking to you", "Not much, you?"];
+  if (/\bcome|see you|meet|date\b/.test(lower)) return ["I'd like that", "Let's plan it", "When are you free?", "Tell me more"];
+  if (/\?$/.test(message)) return ["Yes", "No", "Maybe", "Let me think about it"];
+  return ["Sounds good", "Tell me more", "I like that", "Okay, noted"];
 };
 
 const presenceFromRow = (
@@ -4539,12 +4600,17 @@ function ChatPanel({
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const [voicePreviewBlob, setVoicePreviewBlob] = useState<Blob | null>(null);
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
+  const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "review">("idle");
+  const [speechTranscriptInterim, setSpeechTranscriptInterim] = useState("");
   const [videoNoteState, setVideoNoteState] = useState<"idle" | "recording" | "preview">("idle");
   const [videoNoteElapsedSeconds, setVideoNoteElapsedSeconds] = useState(0);
   const [videoNotePreviewBlob, setVideoNotePreviewBlob] = useState<Blob | null>(null);
   const [videoNotePreviewUrl, setVideoNotePreviewUrl] = useState("");
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechBaseDraftRef = useRef("");
+  const latestChatDraftRef = useRef(chatDraft);
   const recordedChunksRef = useRef<Blob[]>([]);
   const discardingVoiceRef = useRef(false);
   const voiceTimerRef = useRef<number | null>(null);
@@ -4581,6 +4647,15 @@ function ChatPanel({
   const activeSearchMessageId = searchMatchIds[safeActiveSearchIndex] || "";
   const shownMessages = availableMessages;
   const draftWarning = safetySettings.scamWarnings ? riskyMessageWarning(chatDraft) : "";
+  const lastIncomingMessage = useMemo(
+    () => [...shownMessages].reverse().find((message) => message.sender_id !== activePlayerId) || null,
+    [shownMessages, activePlayerId],
+  );
+  const quickReplySourceText = lastIncomingMessage ? decodeChatReply(lastIncomingMessage.body).text : "";
+  const quickReplySuggestions = useMemo(
+    () => buildSmartReplySuggestions(chatMessageText(quickReplySourceText), activeMatchProfile.display_name),
+    [quickReplySourceText, activeMatchProfile.display_name],
+  );
   const composerRows = Math.min(
     6,
     Math.max(
@@ -4618,13 +4693,109 @@ function ChatPanel({
     };
   };
 
+  useEffect(() => {
+    latestChatDraftRef.current = chatDraft;
+  }, [chatDraft]);
+
+  useEffect(() => {
+    if (!chatDraft.trim() && speechToTextState === "review") setSpeechToTextState("idle");
+  }, [chatDraft, speechToTextState]);
+
   const sendCurrentMessage = () => {
     const trimmedDraft = chatDraft.trim();
     if (!trimmedDraft) return;
     onSend(replyingTo ? encodeChatReply(replyingTo, trimmedDraft) : trimmedDraft, true);
+    setSpeechToTextState("idle");
+    setSpeechTranscriptInterim("");
     setReplyingTo(null);
     setOpenActionsFor(null);
     setMessageMenuPosition(null);
+  };
+
+  const sendSuggestedReply = (suggestion: string) => {
+    const replyTarget = lastIncomingMessage ? replyReferenceFor(lastIncomingMessage) : replyingTo;
+    onQuickSend(replyTarget ? encodeChatReply(replyTarget, suggestion) : suggestion);
+    setSpeechToTextState("idle");
+    setSpeechTranscriptInterim("");
+    setReplyingTo(null);
+  };
+
+  const stopSpeechToText = () => {
+    speechRecognitionRef.current?.stop();
+  };
+
+  const startSpeechToText = () => {
+    if (communicationBlocked) return;
+    const RecognitionConstructor = getSpeechRecognitionConstructor();
+    if (!RecognitionConstructor) {
+      closeMenuWithNotice("Speech-to-text is not supported on this device yet. Try Chrome or Edge on a connected device.");
+      return;
+    }
+    if (speechToTextState === "listening") {
+      stopSpeechToText();
+      return;
+    }
+
+    const recognition = new RecognitionConstructor();
+    speechRecognitionRef.current = recognition;
+    speechBaseDraftRef.current = chatDraft.trim();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.lang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language || "en-ZA" : "en-ZA";
+
+    recognition.onstart = () => {
+      setSpeechToTextState("listening");
+      setSpeechTranscriptInterim("");
+      setShowAttachMenu(false);
+      setShowEmojiPicker(false);
+    };
+
+    recognition.onresult = (event) => {
+      const finalParts: string[] = [];
+      const interimParts: string[] = [];
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript?.trim();
+        if (!transcript) continue;
+        if (result.isFinal) finalParts.push(transcript);
+        else interimParts.push(transcript);
+      }
+
+      const base = speechBaseDraftRef.current;
+      const finalTranscript = finalParts.join(" ").trim();
+      const interimTranscript = interimParts.join(" ").trim();
+      const committedDraft = [base, finalTranscript].filter(Boolean).join(base && finalTranscript ? " " : "").trim();
+      const visibleDraft = [committedDraft, interimTranscript].filter(Boolean).join(committedDraft && interimTranscript ? " " : "").trim();
+
+      setSpeechTranscriptInterim(interimTranscript);
+      setChatDraft(visibleDraft);
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "aborted") {
+        setSpeechToTextState((current) => (latestChatDraftRef.current.trim() ? "review" : current === "listening" ? "idle" : current));
+        setSpeechTranscriptInterim("");
+        return;
+      }
+      const message =
+        event.error === "not-allowed"
+          ? "Microphone permission is needed for speech-to-text."
+          : event.error === "no-speech"
+            ? "No speech was detected. Try again and speak clearly."
+            : "Speech-to-text stopped unexpectedly. Please try again.";
+      setSpeechToTextState("idle");
+      setSpeechTranscriptInterim("");
+      closeMenuWithNotice(message);
+    };
+
+    recognition.onend = () => {
+      speechRecognitionRef.current = null;
+      setSpeechToTextState((current) => (latestChatDraftRef.current.trim() ? "review" : current === "listening" ? "idle" : current));
+      setSpeechTranscriptInterim("");
+    };
+
+    recognition.start();
   };
 
   const closeMenuWithNotice = (notice: string) => {
@@ -4959,6 +5130,7 @@ function ChatPanel({
       clearMessageLongPress();
       stopVoiceTimer();
       stopVideoNoteTimer();
+      speechRecognitionRef.current?.stop();
       recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoNoteRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
@@ -5520,6 +5692,58 @@ function ChatPanel({
             </button>
           </div>
         ) : (
+          <div className="space-y-3">
+            {!communicationBlocked && lastIncomingMessage ? (
+              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-200/65">Quick replies</p>
+                    <p className="mt-1 text-xs text-white/52">Tap a suggestion to reply to {activeMatchProfile.display_name} faster.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={startSpeechToText}
+                    disabled={saving}
+                    className={`rounded-full px-3 py-2 text-xs font-black transition ${speechToTextState === "listening" ? "bg-rose-500 text-white shadow-[0_10px_25px_rgba(244,63,94,0.35)]" : "bg-emerald-500/14 text-emerald-100 hover:bg-emerald-500/22"} disabled:opacity-40`}
+                  >
+                    {speechToTextState === "listening" ? "Stop listening" : "Speech to text"}
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {quickReplySuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => sendSuggestedReply(suggestion)}
+                      disabled={saving}
+                      className="rounded-full border border-white/10 bg-[#142033] px-3 py-2 text-sm font-semibold text-white/88 transition hover:border-sky-300/35 hover:bg-[#1a2940] disabled:opacity-45"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {speechToTextState !== "idle" || speechTranscriptInterim ? (
+              <div className="rounded-[1.35rem] border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-50">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-black">{speechToTextState === "listening" ? "Listening now..." : "Transcript ready to review"}</p>
+                    <p className="mt-1 text-xs text-emerald-100/75">
+                      {speechToTextState === "listening"
+                        ? "Speak naturally in your device language. The text appears in the message box as we listen."
+                        : "Read the typed message, edit anything you want, then send it."}
+                    </p>
+                  </div>
+                  {speechToTextState === "listening" ? (
+                    <button type="button" onClick={stopSpeechToText} className="rounded-full bg-rose-500 px-3 py-2 text-xs font-black text-white">
+                      Stop
+                    </button>
+                  ) : null}
+                </div>
+                {speechTranscriptInterim ? <p className="mt-2 text-xs font-semibold text-emerald-100/70">Hearing: {speechTranscriptInterim}</p> : null}
+              </div>
+            ) : null}
           <div className="flex items-end gap-2">
             <button onClick={() => setShowEmojiPicker((current) => !current)} className="mb-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:flex" aria-label="Choose emoji">
               <SmileIcon />
@@ -5602,9 +5826,18 @@ function ChatPanel({
             >
               <MicIcon />
             </button>
+            <button
+              onClick={startSpeechToText}
+              disabled={communicationBlocked}
+              className={`${chatDraft.trim() && speechToTextState === "idle" ? "hidden" : "flex"} h-12 min-w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500 px-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40`}
+              aria-label={speechToTextState === "listening" ? "Stop speech to text" : "Start speech to text"}
+            >
+              {speechToTextState === "listening" ? "Stop" : "Talk"}
+            </button>
             <button onClick={chatDraft.trim() ? sendCurrentMessage : () => onQuickSend("\u{1F44D}")} disabled={saving || communicationBlocked} className={`${chatDraft.trim() ? "flex" : "hidden"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-60`} aria-label={chatDraft.trim() ? "Send message" : "Send like"}>
               Send
             </button>
+          </div>
           </div>
         )}
         {draftWarning ? <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">{draftWarning}</p> : null}
