@@ -265,6 +265,7 @@ const appSettingsKey = (userId: string) => `dating-app-settings:${userId}`;
 const likeUsageKey = (userId: string) => `dating-like-usage:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
 const dailyLikeLimit = 20;
+const composerEmojiPalette = ["😀", "😂", "😍", "🥰", "😘", "😉", "😊", "😎", "🔥", "❤️", "👍", "👏", "🙏", "🎉", "😢", "😡"];
 const getSpeechRecognitionConstructor = () =>
   typeof window === "undefined" ? null : window.SpeechRecognition || window.webkitSpeechRecognition || null;
 const defaultSafetySettings: PartnerSafetySettings = {
@@ -4491,6 +4492,34 @@ function SmileIcon({ className = "h-6 w-6" }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-3.2 8.1c-.7 0-1.2-.5-1.2-1.2s.5-1.2 1.2-1.2S10 8.2 10 8.9s-.5 1.2-1.2 1.2zm6.4 0c-.7 0-1.2-.5-1.2-1.2s.5-1.2 1.2-1.2 1.2.5 1.2 1.2-.5 1.2-1.2 1.2zM12 17.4c-2.3 0-4.2-1.3-5.1-3.2h2.2c.7.8 1.7 1.2 2.9 1.2s2.2-.4 2.9-1.2h2.2c-.9 1.9-2.8 3.2-5.1 3.2z" /></svg>;
 }
 
+function PlusIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className={className} aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
+}
+
+function DocumentIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M14 3v6h6" /><path d="M9 13h6M9 17h6" /></svg>;
+}
+
+function CameraIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" /><circle cx="12" cy="12.5" r="3.5" /></svg>;
+}
+
+function ContactCardIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path d="M6.5 15c.7-1.2 1.8-2 3.2-2s2.5.8 3.2 2M15 10h3M15 14h3" /></svg>;
+}
+
+function PollIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-8" /></svg>;
+}
+
+function EventIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></svg>;
+}
+
+function PinIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M12 21s6-5.6 6-11a6 6 0 1 0-12 0c0 5.4 6 11 6 11z" /><circle cx="12" cy="10" r="2.2" /></svg>;
+}
+
 function ThumbIcon({ className = "h-6 w-6" }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M2 10.5C2 9.7 2.7 9 3.5 9H6v12H3.5C2.7 21 2 20.3 2 19.5v-9zM8 21V8.7l4.6-5.1c.8-.9 2.4-.4 2.4.9V9h4.7c1.5 0 2.6 1.4 2.2 2.8l-1.8 6.8c-.4 1.4-1.6 2.4-3.1 2.4H8z" /></svg>;
 }
@@ -4608,6 +4637,7 @@ function ChatPanel({
   const [videoNotePreviewBlob, setVideoNotePreviewBlob] = useState<Blob | null>(null);
   const [videoNotePreviewUrl, setVideoNotePreviewUrl] = useState("");
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showRecordMenu, setShowRecordMenu] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const speechRecorderRef = useRef<MediaRecorder | null>(null);
@@ -4738,6 +4768,9 @@ function ChatPanel({
 
   const sendSuggestedReply = (suggestion: string) => {
     const replyTarget = lastIncomingMessage ? replyReferenceFor(lastIncomingMessage) : replyingTo;
+    setShowRecordMenu(false);
+    setShowAttachMenu(false);
+    setShowEmojiPicker(false);
     onQuickSend(replyTarget ? encodeChatReply(replyTarget, suggestion) : suggestion);
     setSpeechToTextState("idle");
     setSpeechTranscriptInterim("");
@@ -5740,7 +5773,7 @@ function ChatPanel({
         ) : null}
         {showEmojiPicker ? (
           <div className="mb-3 grid grid-cols-8 gap-2 rounded-3xl border border-white/10 bg-[#101d31] p-3 shadow-xl">
-            {chatEmojis.map((emoji) => (
+            {composerEmojiPalette.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
@@ -5846,32 +5879,24 @@ function ChatPanel({
           <div className="space-y-3">
             {!communicationBlocked && lastIncomingMessage ? (
               <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-200/65">Quick replies</p>
-                    <p className="mt-1 text-xs text-white/52">Tap a suggestion to reply to {activeMatchProfile.display_name} faster.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={startSpeechToText}
-                    disabled={saving || speechToTextState === "transcribing"}
-                    className={`rounded-full px-3 py-2 text-xs font-black transition ${speechToTextState === "listening" ? "bg-rose-500 text-white shadow-[0_10px_25px_rgba(244,63,94,0.35)]" : "bg-emerald-500/14 text-emerald-100 hover:bg-emerald-500/22"} disabled:opacity-40`}
-                  >
-                    {speechToTextState === "listening" ? "Stop recording" : speechToTextState === "transcribing" ? "Transcribing..." : "Speech to text"}
-                  </button>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-200/65">Quick replies</p>
+                  <p className="mt-1 text-xs text-white/52">Two at a time, swipe sideways to see more.</p>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="grid auto-cols-[minmax(9.5rem,1fr)] grid-flow-col grid-rows-2 gap-2">
                   {quickReplySuggestions.map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
                       onClick={() => sendSuggestedReply(suggestion)}
                       disabled={saving}
-                      className="rounded-full border border-white/10 bg-[#142033] px-3 py-2 text-sm font-semibold text-white/88 transition hover:border-sky-300/35 hover:bg-[#1a2940] disabled:opacity-45"
+                        className="min-h-10 rounded-2xl border border-white/10 bg-[#142033] px-3 py-2 text-left text-sm font-semibold text-white/88 transition hover:border-sky-300/35 hover:bg-[#1a2940] disabled:opacity-45"
                     >
                       {suggestion}
                     </button>
                   ))}
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -5900,11 +5925,11 @@ function ChatPanel({
               </div>
             ) : null}
           <div className="flex items-end gap-2">
-            <button onClick={() => setShowEmojiPicker((current) => !current)} className="mb-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:flex" aria-label="Choose emoji">
+            <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="mb-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:flex" aria-label="Choose emoji">
               <SmileIcon />
             </button>
             <div className="relative flex min-w-0 flex-1 items-end gap-2 rounded-[1.45rem] border border-white/10 bg-[#243041] px-3 py-2 shadow-inner focus-within:border-emerald-400/65 focus-within:ring-2 focus-within:ring-emerald-400/15">
-              <button onClick={() => setShowEmojiPicker((current) => !current)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:hidden" aria-label="Choose emoji">
+              <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:hidden" aria-label="Choose emoji">
                 <SmileIcon />
               </button>
               <textarea
@@ -5924,14 +5949,28 @@ function ChatPanel({
               <div className="relative shrink-0">
               <button
                 type="button"
-                onClick={() => setShowAttachMenu((current) => !current)}
+                onClick={() => { setShowAttachMenu((current) => !current); setShowEmojiPicker(false); setShowRecordMenu(false); }}
                 disabled={communicationBlocked || saving}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-2xl text-sky-300 transition hover:bg-white/10 disabled:opacity-40"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 disabled:opacity-40"
                 aria-label="Attach"
               >
-                +
+                <PlusIcon />
               </button>
               {showAttachMenu ? (
+                <div className="absolute bottom-12 left-0 z-40 w-60 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
+                  <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500"><DocumentIcon className="h-5 w-5" /></span><span>Document</span></button>
+                  <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500"><PhotoIcon className="h-5 w-5" /></span><span>Photos and videos</span></button>
+                  <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-pink-500"><CameraIcon className="h-5 w-5" /></span><span>Camera</span></button>
+                  <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-orange-500"><MicIcon className="h-5 w-5" /></span><span>Audio</span></button>
+                  <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-sky-500"><ContactCardIcon className="h-5 w-5" /></span><span>Contact</span></button>
+                  <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-amber-500"><PollIcon className="h-5 w-5" /></span><span>Poll</span></button>
+                  <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-rose-500"><EventIcon className="h-5 w-5" /></span><span>Event</span></button>
+                  <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-lime-500"><PinIcon className="h-5 w-5" /></span><span>Location</span></button>
+                  <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-fuchsia-500"><EventIcon className="h-5 w-5" /></span><span>Date plan</span></button>
+                  <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-emerald-500"><SmileIcon className="h-5 w-5" /></span><span>New sticker</span></button>
+                </div>
+              ) : null}
+              {false ? (
                 <div className="absolute bottom-12 left-0 z-40 w-56 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
                   <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Document</span></button>
                   <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Photos & videos</span></button>
@@ -5968,7 +6007,7 @@ function ChatPanel({
             <button
               onClick={() => void startVideoNoteRecording()}
               disabled={communicationBlocked}
-              className={`${chatDraft.trim() ? "hidden" : "flex"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white shadow-[0_12px_30px_rgba(14,165,233,0.28)] transition hover:bg-sky-400 disabled:opacity-40`}
+              className="hidden"
               aria-label="Record video note"
             >
               <VideoIcon />
@@ -5976,19 +6015,29 @@ function ChatPanel({
             <button
               onClick={() => void startVoiceRecording()}
               disabled={communicationBlocked}
-              className={`${chatDraft.trim() ? "hidden" : "flex"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-40`}
+              className="hidden"
               aria-label="Record voice message"
             >
               <MicIcon />
             </button>
-            <button
-              onClick={startSpeechToText}
-              disabled={communicationBlocked || speechToTextState === "transcribing"}
-              className={`${chatDraft.trim() && speechToTextState === "idle" ? "hidden" : "flex"} h-12 min-w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500 px-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40`}
-              aria-label={speechToTextState === "listening" ? "Stop speech to text" : "Start speech to text"}
-            >
-              {speechToTextState === "listening" ? "Stop" : speechToTextState === "transcribing" ? "..." : "Talk"}
-            </button>
+            <div className={`${chatDraft.trim() ? "hidden" : "relative"}`}>
+              <button
+                type="button"
+                onClick={() => { setShowRecordMenu((current) => !current); setShowAttachMenu(false); setShowEmojiPicker(false); }}
+                disabled={communicationBlocked || speechToTextState === "transcribing"}
+                className="flex h-12 min-w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500 px-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40"
+                aria-label="Open recording options"
+              >
+                Talk
+              </button>
+              {showRecordMenu ? (
+                <div className="absolute bottom-14 right-0 z-40 flex w-52 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101d31] p-2 text-sm text-white shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
+                  <button type="button" onClick={() => { setShowRecordMenu(false); void startVideoNoteRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><VideoIcon className="h-5 w-5 text-sky-300" /><span>Video record</span></button>
+                  <button type="button" onClick={() => { setShowRecordMenu(false); void startVoiceRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-emerald-300" /><span>Voice record</span></button>
+                  <button type="button" onClick={() => { setShowRecordMenu(false); startSpeechToText(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-cyan-300" /><span>Voice to text</span></button>
+                </div>
+              ) : null}
+            </div>
             <button onClick={chatDraft.trim() ? sendCurrentMessage : () => onQuickSend("\u{1F44D}")} disabled={saving || communicationBlocked} className={`${chatDraft.trim() ? "flex" : "hidden"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-60`} aria-label={chatDraft.trim() ? "Send message" : "Send like"}>
               Send
             </button>
