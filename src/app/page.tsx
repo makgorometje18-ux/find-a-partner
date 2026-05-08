@@ -4680,11 +4680,9 @@ function ChatPanel({
   const safeActiveSearchIndex = searchMatchIds.length ? Math.min(activeSearchIndex, searchMatchIds.length - 1) : 0;
   const activeSearchMessageId = searchMatchIds[safeActiveSearchIndex] || "";
   const shownMessages = availableMessages;
+  const latestVisibleMessage = shownMessages[shownMessages.length - 1] || null;
   const draftWarning = safetySettings.scamWarnings ? riskyMessageWarning(chatDraft) : "";
-  const lastIncomingMessage = useMemo(
-    () => [...shownMessages].reverse().find((message) => message.sender_id !== activePlayerId) || null,
-    [shownMessages, activePlayerId],
-  );
+  const lastIncomingMessage = latestVisibleMessage && latestVisibleMessage.sender_id !== activePlayerId ? latestVisibleMessage : null;
   const quickReplySourceText = lastIncomingMessage ? decodeChatReply(lastIncomingMessage.body).text : "";
   const quickReplySuggestions = useMemo(
     () => buildSmartReplySuggestions(chatMessageText(quickReplySourceText), activeMatchProfile.display_name),
@@ -4778,9 +4776,10 @@ function ChatPanel({
   };
 
   const stopSpeechRecorder = () => {
-    if (speechRecorderRef.current && speechRecorderRef.current.state !== "inactive") {
-      speechRecorderRef.current.stop();
-    }
+    if (!speechRecorderRef.current || speechRecorderRef.current.state === "inactive") return;
+    setSpeechToTextState("transcribing");
+    setSpeechTranscriptInterim("Turning your voice into text...");
+    speechRecorderRef.current.stop();
   };
 
   const stopSpeechToText = () => {
@@ -4788,7 +4787,13 @@ function ChatPanel({
       stopSpeechRecorder();
       return;
     }
-    speechRecognitionRef.current?.stop();
+    if (speechRecognitionRef.current) {
+      setSpeechTranscriptInterim("");
+      speechRecognitionRef.current.stop();
+      return;
+    }
+    setSpeechToTextState("idle");
+    setSpeechTranscriptInterim("");
   };
 
   const appendTranscriptToDraft = (transcript: string) => {
@@ -4822,9 +4827,10 @@ function ChatPanel({
 
     recognition.onstart = () => {
       setSpeechToTextState("listening");
-      setSpeechTranscriptInterim("");
+      setSpeechTranscriptInterim("Listening for your words...");
       setShowAttachMenu(false);
       setShowEmojiPicker(false);
+      setShowRecordMenu(false);
     };
 
     recognition.onresult = (event) => {
@@ -4924,6 +4930,7 @@ function ChatPanel({
       speechBaseDraftRef.current = chatDraft.trim();
       setShowAttachMenu(false);
       setShowEmojiPicker(false);
+      setShowRecordMenu(false);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: voiceAudioConstraints });
       speechTranscriptionStreamRef.current = stream;
       const preferredMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -4937,7 +4944,7 @@ function ChatPanel({
 
       recorder.onstart = () => {
         setSpeechToTextState("listening");
-        setSpeechTranscriptInterim("Recording your voice for transcription...");
+        setSpeechTranscriptInterim("Recording your voice...");
       };
 
       recorder.onerror = () => {
@@ -5877,7 +5884,7 @@ function ChatPanel({
           </div>
         ) : (
           <div className="space-y-3">
-            {!communicationBlocked && lastIncomingMessage ? (
+            {!communicationBlocked && lastIncomingMessage && quickReplySuggestions.length ? (
               <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] px-3 py-3">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-200/65">Quick replies</p>
@@ -6063,7 +6070,6 @@ function CallOverlay({
   const isVideo = callState.kind === "video";
   const isIncoming = callState.status === "incoming";
   const isFailureState = callState.status === "unreachable" || callState.status === "no-answer" || callState.status === "declined";
-  const hasReachedPeer = Boolean(callState.reachedPeer);
   const formatCallDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -6078,7 +6084,7 @@ function CallOverlay({
       : callState.status === "calling"
         ? "Calling"
         : callState.status === "ringing"
-          ? "Reached their device"
+          ? "Ringing"
         : callState.status === "connecting"
           ? "Connecting"
           : callState.status === "connected"
@@ -6097,13 +6103,11 @@ function CallOverlay({
       : callState.status === "calling"
         ? `Trying to connect your ${isVideo ? "video" : "voice"} call...`
         : callState.status === "ringing"
-          ? `${callState.peerName}'s device is online and ringing.`
+          ? `${callState.peerName}'s phone is ringing.`
           : callState.status === "connecting"
             ? "Setting up secure audio and video..."
             : callState.status === "connected"
-              ? hasReachedPeer
-                ? "Your call is live."
-                : "Call connected."
+              ? "Your call is live."
               : callState.status === "unreachable"
                 ? `${callState.peerName} is offline or not connected to the internet.`
                 : callState.status === "no-answer"
@@ -6118,7 +6122,6 @@ function CallOverlay({
           <div className="max-w-[75%]">
             <p className="text-[11px] uppercase tracking-[0.38em] text-sky-200/65">{statusLabel}</p>
             <h2 className="mt-2 truncate text-[2rem] font-black leading-none">{callState.peerName}</h2>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-white/70">{detailLabel}</p>
           </div>
           <span className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-xs font-bold text-white/80 backdrop-blur-sm">{isVideo ? "Video" : "Voice"}</span>
         </div>
@@ -6134,7 +6137,7 @@ function CallOverlay({
                     <div className={`mx-auto flex h-36 w-36 items-center justify-center rounded-full text-6xl font-black shadow-[0_0_90px_rgba(37,99,235,0.35)] ${isFailureState ? "bg-rose-500/18 text-rose-100" : "bg-blue-500/18 text-white"}`}>
                       {callState.peerName.slice(0, 1).toUpperCase()}
                     </div>
-                    <p className="mt-8 text-xl font-semibold text-white/88">{hasReachedPeer ? "Connected to their device" : "Waiting for video feed"}</p>
+                    <p className="mt-8 text-xl font-semibold text-white/88">{callState.status === "ringing" ? "Ringing..." : callState.status === "connected" ? "Connected" : callState.status === "connecting" ? "Connecting..." : isFailureState ? "Call ended" : "Waiting for video feed"}</p>
                     <p className="mt-3 text-sm text-white/58">{detailLabel}</p>
                   </div>
                 </div>
@@ -6161,16 +6164,6 @@ function CallOverlay({
         </div>
 
         <div className="shrink-0 bg-gradient-to-t from-[#040b16] via-[#071323]/95 to-transparent px-5 pb-7 pt-6">
-          {!isIncoming ? (
-            <div className="mb-5 flex items-center justify-center gap-3">
-              <div className={`rounded-full px-4 py-2 text-xs font-bold ${hasReachedPeer ? "bg-emerald-500/16 text-emerald-200" : "bg-white/8 text-white/68"}`}>
-                {hasReachedPeer ? "Reached device" : "Not yet reached"}
-              </div>
-              <div className={`rounded-full px-4 py-2 text-xs font-bold ${callState.status === "connected" ? "bg-blue-500/16 text-blue-100" : "bg-white/8 text-white/68"}`}>
-                {callState.status === "connected" ? "Live call" : isFailureState ? "Call ended" : "Trying connection"}
-              </div>
-            </div>
-          ) : null}
           {isIncoming ? (
             <div className="grid grid-cols-2 gap-3">
               <button onClick={onReject} className="rounded-full bg-rose-600 px-5 py-4 font-black text-white shadow-lg transition hover:bg-rose-500">
@@ -6181,10 +6174,7 @@ function CallOverlay({
               </button>
             </div>
           ) : (
-            <div className="mx-auto flex max-w-md items-center gap-4">
-              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/6 px-4 py-3 text-xs font-semibold text-white/65 backdrop-blur-sm">
-                {localStream ? `Mic ${isVideo ? "and camera" : ""} active` : isFailureState ? "Connection closed" : "Preparing media"}
-              </div>
+            <div className="mx-auto flex max-w-md items-center justify-center">
               <button onClick={onEnd} className="min-w-[11rem] rounded-full bg-rose-600 px-6 py-4 font-black text-white shadow-[0_18px_40px_rgba(225,29,72,0.4)] transition hover:bg-rose-500">
                 {isFailureState ? "Close" : "End Call"}
               </button>
