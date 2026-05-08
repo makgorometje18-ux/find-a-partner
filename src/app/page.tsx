@@ -412,7 +412,7 @@ const chatDocumentPayload = (body: string) => decodeChatPayload<ChatAttachmentPa
 const chatContactPayload = (body: string) => decodeChatPayload<{ name: string; detail: string }>(body, chatContactPrefix, { name: "Contact", detail: "" });
 const chatPollPayload = (body: string) => decodeChatPayload<{ question: string; options: string[] }>(body, chatPollPrefix, { question: "Poll", options: [] });
 const chatEventPayload = (body: string) => decodeChatPayload<{ title: string; detail: string }>(body, chatEventPrefix, { title: "Event", detail: "" });
-const chatStickerValue = (body: string) => decodeURIComponent(body.replace(chatStickerPrefix, "")) || "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â";
+const chatStickerValue = (body: string) => decodeURIComponent(body.replace(chatStickerPrefix, "")) || ":)";
 const chatLocationPayload = (body: string) => decodeChatPayload<{ latitude: number; longitude: number; label: string }>(body, chatLocationPrefix, { latitude: 0, longitude: 0, label: "Shared location" });
 const chatDatePlanPayload = (body: string) => decodeChatPayload<{ title: string; when: string; place: string; note: string }>(body, chatDatePlanPrefix, { title: "Date plan", when: "Soon", place: "To be decided", note: "" });
 type ChatReplyReference = { id: string; senderName: string; preview: string };
@@ -5058,7 +5058,7 @@ function ChatPanel({
     sendStructuredAttachment(`${chatEventPrefix}${encodeChatPayload({ title: title.trim(), detail: detail?.trim() || "No details added" })}`);
   };
   const sendStickerAttachment = () => {
-    const sticker = window.prompt("Choose sticker emoji", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
+    const sticker = window.prompt("Choose sticker emoji", ":)");
     if (!sticker?.trim()) return;
     sendStructuredAttachment(`${chatStickerPrefix}${encodeURIComponent(sticker.trim())}`);
   };
@@ -5837,8 +5837,8 @@ function ChatPanel({
           </div>
         ) : voiceRecorderState !== "idle" ? (
           <div className="flex items-center gap-3 rounded-full bg-white px-3 py-2 text-slate-950 shadow-[0_12px_35px_rgba(0,0,0,0.25)]">
-            <button type="button" onClick={resetVoiceDraft} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-slate-800 transition hover:bg-slate-100" aria-label="Delete voice note">
-              ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ
+            <button type="button" onClick={resetVoiceDraft} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-800 transition hover:bg-slate-100" aria-label="Delete voice note">
+              <CloseIcon className="h-4 w-4" />
             </button>
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${voiceRecorderState === "recording" ? "animate-pulse bg-rose-600" : "bg-slate-400"}`}></span>
             <span className="w-11 shrink-0 text-base font-semibold tabular-nums">{voiceDurationLabel}</span>
@@ -5859,20 +5859,20 @@ function ChatPanel({
               <button
                 type="button"
                 onClick={voiceRecorderState === "recording" ? pauseVoiceRecording : resumeVoiceRecording}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg font-black text-rose-700 transition hover:bg-rose-50"
+                className="flex h-9 min-w-16 shrink-0 items-center justify-center rounded-full px-3 text-xs font-black text-rose-700 transition hover:bg-rose-50"
                 aria-label={voiceRecorderState === "recording" ? "Pause recording" : "Resume recording"}
               >
-                {voiceRecorderState === "recording" ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡" : "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¶"}
+                {voiceRecorderState === "recording" ? "Pause" : "Resume"}
               </button>
             )}
             <button
               type="button"
               onClick={voiceRecorderState === "preview" ? sendVoicePreview : finishVoicePreview}
               disabled={saving}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xl font-black text-white transition hover:bg-emerald-400 disabled:opacity-60"
+              className="flex h-10 min-w-16 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-3 text-xs font-black text-white transition hover:bg-emerald-400 disabled:opacity-60"
               aria-label={voiceRecorderState === "preview" ? "Send voice note" : "Preview voice note"}
             >
-              ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¶
+              {voiceRecorderState === "preview" ? "Send" : "Preview"}
             </button>
           </div>
         ) : (
@@ -5884,164 +5884,130 @@ function ChatPanel({
                   <p className="mt-1 text-xs text-white/52">Two at a time, swipe sideways to see more.</p>
                 </div>
                 <div className="mt-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <div className="grid auto-cols-[minmax(9.5rem,1fr)] grid-flow-col grid-rows-2 gap-2">
-                  {quickReplySuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={() => sendSuggestedReply(suggestion)}
-                      disabled={saving}
-                        className="min-h-10 rounded-2xl border border-white/10 bg-[#142033] px-3 py-2 text-left text-sm font-semibold text-white/88 transition hover:border-sky-300/35 hover:bg-[#1a2940] disabled:opacity-45"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                  <div className="flex gap-2">
+                    {quickReplySuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => sendSuggestedReply(suggestion)}
+                        disabled={saving}
+                        className="min-h-10 w-[calc(50%-0.25rem)] shrink-0 rounded-2xl border border-white/10 bg-[#142033] px-3 py-2 text-left text-sm font-semibold text-white/88 transition hover:border-sky-300/35 hover:bg-[#1a2940] disabled:opacity-45"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
             ) : null}
             {speechToTextState !== "idle" || speechTranscriptInterim ? (
-              <div className="rounded-[1.35rem] border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-50">
+              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-50">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-black">{speechToTextState === "listening" ? "Listening now..." : speechToTextState === "transcribing" ? "Transcribing your message..." : "Transcript ready to review"}</p>
-                    <p className="mt-1 text-xs text-emerald-100/75">
-                      {speechToTextState === "listening"
-                        ? serverTranscriptionAvailable
-                          ? "Speak naturally. We are recording your voice and sending it for multilingual transcription."
-                          : "Speak naturally in your device language. The text appears in the message box as we listen."
-                        : speechToTextState === "transcribing"
-                          ? "Hold on while we turn your voice into a typed draft."
-                          : "Read the typed message, edit anything you want, then send it."}
-                    </p>
-                  </div>
+                  <p className="min-w-0 flex-1 text-sm font-black">
+                    {speechToTextState === "listening"
+                      ? "Listening..."
+                      : speechToTextState === "transcribing"
+                        ? "Transcribing..."
+                        : "Transcript ready"}
+                  </p>
                   {speechToTextState === "listening" ? (
                     <button type="button" onClick={stopSpeechToText} className="rounded-full bg-rose-500 px-3 py-2 text-xs font-black text-white">
                       Stop
                     </button>
                   ) : null}
                 </div>
-                {speechTranscriptInterim ? <p className="mt-2 text-xs font-semibold text-emerald-100/70">Hearing: {speechTranscriptInterim}</p> : null}
+                {speechTranscriptInterim ? <p className="mt-1 truncate text-xs font-semibold text-emerald-100/70">Hearing: {speechTranscriptInterim}</p> : null}
               </div>
             ) : null}
-          <div className="flex items-end gap-2">
-            <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="mb-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:flex" aria-label="Choose emoji">
-              <SmileIcon />
-            </button>
-            <div className="relative flex min-w-0 flex-1 items-end gap-2 rounded-[1.45rem] border border-white/10 bg-[#243041] px-3 py-2 shadow-inner focus-within:border-emerald-400/65 focus-within:ring-2 focus-within:ring-emerald-400/15">
-              <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:hidden" aria-label="Choose emoji">
+            <div className="flex items-end gap-2">
+              <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="mb-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:flex" aria-label="Choose emoji">
                 <SmileIcon />
               </button>
-              <textarea
-                value={chatDraft}
-                onChange={(event) => setChatDraft(event.target.value)}
-                disabled={communicationBlocked}
-                rows={composerRows}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    sendCurrentMessage();
-                  }
-                }}
-                placeholder={communicationBlocked ? (isBlocked ? "Unblock to message" : "Messaging unavailable") : "Message"}
-                className="max-h-40 min-h-9 min-w-0 flex-1 resize-none bg-transparent py-2 text-[16px] leading-6 text-white outline-none placeholder:text-white/45 disabled:opacity-60"
-              />
-              <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => { setShowAttachMenu((current) => !current); setShowEmojiPicker(false); setShowRecordMenu(false); }}
-                disabled={communicationBlocked || saving}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 disabled:opacity-40"
-                aria-label="Attach"
-              >
-                <PlusIcon />
+              <div className="relative flex min-w-0 flex-1 items-end gap-2 rounded-[1.45rem] border border-white/10 bg-[#243041] px-3 py-2 shadow-inner focus-within:border-emerald-400/65 focus-within:ring-2 focus-within:ring-emerald-400/15">
+                <button onClick={() => { setShowEmojiPicker((current) => !current); setShowAttachMenu(false); setShowRecordMenu(false); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 sm:hidden" aria-label="Choose emoji">
+                  <SmileIcon />
+                </button>
+                <textarea
+                  value={chatDraft}
+                  onChange={(event) => setChatDraft(event.target.value)}
+                  disabled={communicationBlocked}
+                  rows={composerRows}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendCurrentMessage();
+                    }
+                  }}
+                  placeholder={communicationBlocked ? (isBlocked ? "Unblock to message" : "Messaging unavailable") : "Message"}
+                  className="max-h-40 min-h-9 min-w-0 flex-1 resize-none bg-transparent py-2 text-[16px] leading-6 text-white outline-none placeholder:text-white/45 disabled:opacity-60"
+                />
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAttachMenu((current) => !current); setShowEmojiPicker(false); setShowRecordMenu(false); }}
+                    disabled={communicationBlocked || saving}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10 disabled:opacity-40"
+                    aria-label="Attach"
+                  >
+                    <PlusIcon />
+                  </button>
+                  {showAttachMenu ? (
+                    <div className="absolute bottom-12 left-0 z-40 w-60 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
+                      <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500"><DocumentIcon className="h-5 w-5" /></span><span>Document</span></button>
+                      <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500"><PhotoIcon className="h-5 w-5" /></span><span>Photos and videos</span></button>
+                      <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-pink-500"><CameraIcon className="h-5 w-5" /></span><span>Camera</span></button>
+                      <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-orange-500"><MicIcon className="h-5 w-5" /></span><span>Audio</span></button>
+                      <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-sky-500"><ContactCardIcon className="h-5 w-5" /></span><span>Contact</span></button>
+                      <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-amber-500"><PollIcon className="h-5 w-5" /></span><span>Poll</span></button>
+                      <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-rose-500"><EventIcon className="h-5 w-5" /></span><span>Event</span></button>
+                      <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-lime-500"><PinIcon className="h-5 w-5" /></span><span>Location</span></button>
+                      <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-fuchsia-500"><EventIcon className="h-5 w-5" /></span><span>Date plan</span></button>
+                      <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-emerald-500"><SmileIcon className="h-5 w-5" /></span><span>New sticker</span></button>
+                    </div>
+                  ) : null}
+                  <input ref={documentInputRef} type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => handleAttachmentInput(event, "document")} />
+                  <input ref={mediaInputRef} type="file" className="sr-only" accept="image/*,video/*" onChange={(event) => handleAttachmentInput(event, "media")} />
+                  <input ref={cameraInputRef} type="file" className="sr-only" accept="image/*" capture="environment" onChange={(event) => handleAttachmentInput(event, "camera")} />
+                  <input ref={audioInputRef} type="file" className="sr-only" accept="audio/*" onChange={(event) => handleAttachmentInput(event, "audio")} />
+                </div>
+                <label className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10" aria-label="Send picture">
+                  <PhotoIcon />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={saving || communicationBlocked}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) onImageSend(file);
+                    }}
+                  />
+                </label>
+              </div>
+              <div className={`${chatDraft.trim() ? "hidden" : "relative"}`}>
+                <button
+                  type="button"
+                  onClick={() => { setShowRecordMenu((current) => !current); setShowAttachMenu(false); setShowEmojiPicker(false); }}
+                  disabled={communicationBlocked || speechToTextState === "transcribing"}
+                  className="flex h-12 min-w-24 shrink-0 items-center justify-center gap-2 rounded-full bg-cyan-500 px-4 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40"
+                  aria-label="Open recording options"
+                >
+                  <MicIcon className="h-5 w-5" />
+                  Create
+                </button>
+                {showRecordMenu ? (
+                  <div className="absolute bottom-14 right-0 z-40 flex w-52 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101d31] p-2 text-sm text-white shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
+                    <button type="button" onClick={() => { setShowRecordMenu(false); void startVideoNoteRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><VideoIcon className="h-5 w-5 text-sky-300" /><span>Video record</span></button>
+                    <button type="button" onClick={() => { setShowRecordMenu(false); void startVoiceRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-emerald-300" /><span>Voice record</span></button>
+                    <button type="button" onClick={() => { setShowRecordMenu(false); startSpeechToText(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-cyan-300" /><span>Voice to text</span></button>
+                  </div>
+                ) : null}
+              </div>
+              <button onClick={chatDraft.trim() ? sendCurrentMessage : () => onQuickSend("\u{1F44D}")} disabled={saving || communicationBlocked} className={`${chatDraft.trim() ? "flex" : "hidden"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-60`} aria-label={chatDraft.trim() ? "Send message" : "Send like"}>
+                Send
               </button>
-              {showAttachMenu ? (
-                <div className="absolute bottom-12 left-0 z-40 w-60 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
-                  <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500"><DocumentIcon className="h-5 w-5" /></span><span>Document</span></button>
-                  <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500"><PhotoIcon className="h-5 w-5" /></span><span>Photos and videos</span></button>
-                  <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-pink-500"><CameraIcon className="h-5 w-5" /></span><span>Camera</span></button>
-                  <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-orange-500"><MicIcon className="h-5 w-5" /></span><span>Audio</span></button>
-                  <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-sky-500"><ContactCardIcon className="h-5 w-5" /></span><span>Contact</span></button>
-                  <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-amber-500"><PollIcon className="h-5 w-5" /></span><span>Poll</span></button>
-                  <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-rose-500"><EventIcon className="h-5 w-5" /></span><span>Event</span></button>
-                  <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-lime-500"><PinIcon className="h-5 w-5" /></span><span>Location</span></button>
-                  <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-fuchsia-500"><EventIcon className="h-5 w-5" /></span><span>Date plan</span></button>
-                  <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-emerald-500"><SmileIcon className="h-5 w-5" /></span><span>New sticker</span></button>
-                </div>
-              ) : null}
-              {false ? (
-                <div className="absolute bottom-12 left-0 z-40 w-56 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
-                  <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Document</span></button>
-                  <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Photos & videos</span></button>
-                  <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-pink-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Camera</span></button>
-                  <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-orange-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£</span><span>Audio</span></button>
-                  <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-sky-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â</span><span>Contact</span></button>
-                  <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-amber-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡</span><span>Poll</span></button>
-                  <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-rose-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span><span>Event</span></button>
-                  <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-lime-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ</span><span>Location</span></button>
-                  <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-fuchsia-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥</span><span>Date plan</span></button>
-                  <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-emerald-500">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡</span><span>New sticker</span></button>
-                </div>
-              ) : null}
-              <input ref={documentInputRef} type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => handleAttachmentInput(event, "document")} />
-              <input ref={mediaInputRef} type="file" className="sr-only" accept="image/*,video/*" onChange={(event) => handleAttachmentInput(event, "media")} />
-              <input ref={cameraInputRef} type="file" className="sr-only" accept="image/*" capture="environment" onChange={(event) => handleAttachmentInput(event, "camera")} />
-              <input ref={audioInputRef} type="file" className="sr-only" accept="audio/*" onChange={(event) => handleAttachmentInput(event, "audio")} />
             </div>
-            <label className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-sky-300 transition hover:bg-white/10" aria-label="Send picture">
-              <PhotoIcon />
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                disabled={saving || communicationBlocked}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file) onImageSend(file);
-                }}
-              />
-            </label>
-            </div>
-            <button
-              onClick={() => void startVideoNoteRecording()}
-              disabled={communicationBlocked}
-              className="hidden"
-              aria-label="Record video note"
-            >
-              <VideoIcon />
-            </button>
-            <button
-              onClick={() => void startVoiceRecording()}
-              disabled={communicationBlocked}
-              className="hidden"
-              aria-label="Record voice message"
-            >
-              <MicIcon />
-            </button>
-            <div className={`${chatDraft.trim() ? "hidden" : "relative"}`}>
-              <button
-                type="button"
-                onClick={() => { setShowRecordMenu((current) => !current); setShowAttachMenu(false); setShowEmojiPicker(false); }}
-                disabled={communicationBlocked || speechToTextState === "transcribing"}
-                className="flex h-12 min-w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500 px-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(6,182,212,0.28)] transition hover:bg-cyan-400 disabled:opacity-40"
-                aria-label="Open recording options"
-              >
-                Talk
-              </button>
-              {showRecordMenu ? (
-                <div className="absolute bottom-14 right-0 z-40 flex w-52 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101d31] p-2 text-sm text-white shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
-                  <button type="button" onClick={() => { setShowRecordMenu(false); void startVideoNoteRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><VideoIcon className="h-5 w-5 text-sky-300" /><span>Video record</span></button>
-                  <button type="button" onClick={() => { setShowRecordMenu(false); void startVoiceRecording(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-emerald-300" /><span>Voice record</span></button>
-                  <button type="button" onClick={() => { setShowRecordMenu(false); startSpeechToText(); }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/10"><MicIcon className="h-5 w-5 text-cyan-300" /><span>Voice to text</span></button>
-                </div>
-              ) : null}
-            </div>
-            <button onClick={chatDraft.trim() ? sendCurrentMessage : () => onQuickSend("\u{1F44D}")} disabled={saving || communicationBlocked} className={`${chatDraft.trim() ? "flex" : "hidden"} h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:opacity-60`} aria-label={chatDraft.trim() ? "Send message" : "Send like"}>
-              Send
-            </button>
-          </div>
           </div>
         )}
         {draftWarning ? <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">{draftWarning}</p> : null}
@@ -6267,4 +6233,5 @@ function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry }:
     </div>
   );
 }
+
 
