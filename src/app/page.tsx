@@ -839,9 +839,7 @@ export default function PartnerScenePage() {
       const typedMatches = (matchRows || []) as MatchRow[];
       const partnerIds = typedMatches.map((row) => (row.user_a === user.id ? row.user_b : row.user_a));
       const ownDatingProfile = ownProfile as DatingProfile;
-      const visibleProfiles = ((allProfiles || []) as DatingProfile[]).filter(
-        (profile) => (profile.is_active ?? true) && matchesPreferredGender(profile, ownDatingProfile.preferred_gender)
-      );
+      const visibleProfiles = ((allProfiles || []) as DatingProfile[]).filter((profile) => profile.is_active ?? true);
       const mergedProfiles = [...visibleProfiles, ownDatingProfile];
       const missingIds = partnerIds.filter((id) => !mergedProfiles.some((profile) => profile.user_id === id));
       let matchedProfiles: DatingProfile[] = [];
@@ -1383,13 +1381,12 @@ export default function PartnerScenePage() {
   const hasUnlimitedLikes = premiumUnlimitedTiers.includes(appSettings.premiumTier);
   const likesRemainingToday = hasUnlimitedLikes ? Number.POSITIVE_INFINITY : Math.max(0, dailyLikeLimit - normalizedLikeUsage.count);
   const canLikeToday = hasUnlimitedLikes || likesRemainingToday > 0;
-  const visiblePartnerProfiles = useMemo(
-    () =>
-      profiles.filter((profile) => {
+  const visiblePartnerProfiles = useMemo(() => {
+      const baseProfiles = profiles.filter((profile) => {
         const controls = userControls[profile.user_id] || {};
         if (controls.blocked || controls.blockedBy) return false;
         if (!appSettings.enableDiscovery) return false;
-        if ((profile.intent_lounge || profile.relationship_goal || "Serious Relationship") !== activeLounge) return false;
+        if (!matchesPreferredGender(profile, ownDatingProfile?.preferred_gender)) return false;
         if (appSettings.interestedIn !== "Everyone" && profile.gender) {
           const normalizedGender = profile.gender.toLowerCase();
           if (!settingsGenderTargets[appSettings.interestedIn].some((value) => normalizedGender.includes(value))) return false;
@@ -1407,7 +1404,10 @@ export default function PartnerScenePage() {
           if (distanceKm !== null && distanceKm > appSettings.maxDistanceKm && !appSettings.allowOutsideRange) return false;
         }
         return true;
-      }),
+      });
+      const loungeProfiles = baseProfiles.filter((profile) => (profile.intent_lounge || profile.relationship_goal || "Serious Relationship") === activeLounge);
+      return loungeProfiles.length ? loungeProfiles : baseProfiles;
+    },
     [activeLounge, appSettings, drinksFilter, kidsFilter, ownDatingProfile, profiles, smokesFilter, soberDatesOnly, userControls]
   );
 
@@ -2918,12 +2918,6 @@ export default function PartnerScenePage() {
             <p className="mt-5 text-sm uppercase tracking-[0.3em] text-white/50">Profile</p>
             <h2 className="mt-2 text-3xl font-bold">Your dating profile</h2>
             <OwnProfileCard profile={profileMap[player?.id || ""]} fallbackName={player?.name || "Player"} fallbackAge={player?.age || 18} fallbackCountry={player?.country || "Unknown"} />
-            <div className="mt-5 grid gap-3">
-              <button onClick={() => { window.location.href = "/setup"; }} className="w-full rounded-full bg-white px-5 py-4 font-semibold text-stone-950">Edit Profile</button>
-              <button onClick={() => void logout()} disabled={saving} className="w-full rounded-full border border-rose-300/30 bg-rose-500/10 px-5 py-4 font-semibold text-rose-100 disabled:opacity-60">
-                Logout
-              </button>
-            </div>
             <button
               type="button"
               onClick={() => setShowProfileSettings(true)}
@@ -2938,6 +2932,12 @@ export default function PartnerScenePage() {
                 &gt;
               </span>
             </button>
+            <div className="mt-5 grid gap-3">
+              <button onClick={() => { window.location.href = "/setup"; }} className="w-full rounded-full bg-white px-5 py-4 font-semibold text-stone-950">Edit Profile</button>
+              <button onClick={() => void logout()} disabled={saving} className="w-full rounded-full border border-rose-300/30 bg-rose-500/10 px-5 py-4 font-semibold text-rose-100 disabled:opacity-60">
+                Logout
+              </button>
+            </div>
           </section>
         ) : null}
       </div>
@@ -4631,6 +4631,8 @@ function ChatPanel({
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
   const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "transcribing" | "review">("idle");
   const [speechTranscriptInterim, setSpeechTranscriptInterim] = useState("");
+  const [speechPreviewBlob, setSpeechPreviewBlob] = useState<Blob | null>(null);
+  const [speechPreviewUrl, setSpeechPreviewUrl] = useState("");
   const [serverTranscriptionAvailable, setServerTranscriptionAvailable] = useState<boolean | null>(null);
   const [videoNoteState, setVideoNoteState] = useState<"idle" | "recording" | "preview">("idle");
   const [videoNoteElapsedSeconds, setVideoNoteElapsedSeconds] = useState(0);
@@ -4759,6 +4761,7 @@ function ChatPanel({
     onSend(replyingTo ? encodeChatReply(replyingTo, trimmedDraft) : trimmedDraft, true);
     setSpeechToTextState("idle");
     setSpeechTranscriptInterim("");
+    resetSpeechPreview();
     setReplyingTo(null);
     setOpenActionsFor(null);
     setMessageMenuPosition(null);
@@ -4772,7 +4775,14 @@ function ChatPanel({
     onQuickSend(replyTarget ? encodeChatReply(replyTarget, suggestion) : suggestion);
     setSpeechToTextState("idle");
     setSpeechTranscriptInterim("");
+    resetSpeechPreview();
     setReplyingTo(null);
+  };
+
+  const resetSpeechPreview = () => {
+    if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
+    setSpeechPreviewUrl("");
+    setSpeechPreviewBlob(null);
   };
 
   const stopSpeechRecorder = () => {
@@ -4899,8 +4909,9 @@ function ChatPanel({
         const payload = (await response.json().catch(() => ({}))) as { error?: string; fallback?: "browser" | null };
         if (payload.fallback === "browser") {
           setServerTranscriptionAvailable(false);
-          closeMenuWithNotice(payload.error || "Server transcription is not configured yet. Using device speech recognition instead.");
-          startBrowserSpeechToText();
+          setSpeechToTextState("review");
+          setSpeechTranscriptInterim("");
+          closeMenuWithNotice(payload.error || "Server transcription is not configured yet. The recording is ready to preview, but speech-to-text needs the transcription service enabled.");
           return;
         }
         throw new Error(payload.error || "Transcription failed");
@@ -4910,8 +4921,9 @@ function ChatPanel({
       appendTranscriptToDraft(payload.text || "");
     } catch (transcriptionError) {
       console.error("Could not transcribe speech", transcriptionError);
-      setSpeechToTextState("idle");
-      closeMenuWithNotice("Could not turn that recording into text right now. Please try again.");
+      setSpeechToTextState("review");
+      setSpeechTranscriptInterim("");
+      closeMenuWithNotice("Could not turn that recording into text right now. You can preview the recording, then try again.");
     }
   };
 
@@ -4928,6 +4940,7 @@ function ChatPanel({
 
     try {
       speechBaseDraftRef.current = chatDraft.trim();
+      resetSpeechPreview();
       setShowAttachMenu(false);
       setShowEmojiPicker(false);
       setShowRecordMenu(false);
@@ -4964,6 +4977,9 @@ function ChatPanel({
           setSpeechTranscriptInterim("");
           return;
         }
+        const previewUrl = URL.createObjectURL(recordedBlob);
+        setSpeechPreviewBlob(recordedBlob);
+        setSpeechPreviewUrl(previewUrl);
         void transcribeRecordedSpeech(recordedBlob);
       };
 
@@ -4980,7 +4996,12 @@ function ChatPanel({
       stopSpeechToText();
       return;
     }
+    resetSpeechPreview();
     if (serverTranscriptionAvailable) {
+      void startServerSpeechToText();
+      return;
+    }
+    if (typeof navigator !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia)) {
       void startServerSpeechToText();
       return;
     }
@@ -5325,9 +5346,10 @@ function ChatPanel({
       recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoNoteRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+      if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
       if (videoNotePreviewUrl) URL.revokeObjectURL(videoNotePreviewUrl);
     };
-  }, [voicePreviewUrl, videoNotePreviewUrl]);
+  }, [speechPreviewUrl, videoNotePreviewUrl, voicePreviewUrl]);
 
   useLayoutEffect(() => {
     jumpToLatestMessage();
@@ -5921,9 +5943,14 @@ function ChatPanel({
                     <button type="button" onClick={stopSpeechToText} className="rounded-full bg-rose-500 px-3 py-2 text-xs font-black text-white">
                       Stop
                     </button>
+                  ) : speechToTextState === "review" ? (
+                    <button type="button" onClick={() => { resetSpeechPreview(); setSpeechToTextState("idle"); setSpeechTranscriptInterim(""); }} className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white">
+                      Clear
+                    </button>
                   ) : null}
                 </div>
                 {speechTranscriptInterim ? <p className="mt-1 truncate text-xs font-semibold text-emerald-100/70">Hearing: {speechTranscriptInterim}</p> : null}
+                {speechPreviewUrl ? <audio controls src={speechPreviewUrl} className="mt-2 h-9 w-full" /> : null}
               </div>
             ) : null}
             <div className="flex items-end gap-2">
