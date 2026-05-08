@@ -4631,9 +4631,7 @@ function ChatPanel({
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
   const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "transcribing" | "review">("idle");
   const [speechTranscriptInterim, setSpeechTranscriptInterim] = useState("");
-  const [speechPreviewBlob, setSpeechPreviewBlob] = useState<Blob | null>(null);
   const [speechPreviewUrl, setSpeechPreviewUrl] = useState("");
-  const [serverTranscriptionAvailable, setServerTranscriptionAvailable] = useState<boolean | null>(null);
   const [videoNoteState, setVideoNoteState] = useState<"idle" | "recording" | "preview">("idle");
   const [videoNoteElapsedSeconds, setVideoNoteElapsedSeconds] = useState(0);
   const [videoNotePreviewBlob, setVideoNotePreviewBlob] = useState<Blob | null>(null);
@@ -4646,6 +4644,9 @@ function ChatPanel({
   const speechRecorderChunksRef = useRef<Blob[]>([]);
   const speechTranscriptionStreamRef = useRef<MediaStream | null>(null);
   const speechBaseDraftRef = useRef("");
+  const speechFinalTranscriptRef = useRef("");
+  const speechInterimTranscriptRef = useRef("");
+  const latestSpeechPreviewBlobRef = useRef<Blob | null>(null);
   const latestChatDraftRef = useRef(chatDraft);
   const recordedChunksRef = useRef<Blob[]>([]);
   const discardingVoiceRef = useRef(false);
@@ -4732,26 +4733,6 @@ function ChatPanel({
   }, [chatDraft]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const checkTranscriptionService = async () => {
-      try {
-        const response = await fetch("/api/transcribe", { cache: "no-store" });
-        if (!response.ok) throw new Error("Transcription service check failed");
-        const payload = (await response.json()) as { available?: boolean };
-        if (!cancelled) setServerTranscriptionAvailable(Boolean(payload.available));
-      } catch {
-        if (!cancelled) setServerTranscriptionAvailable(false);
-      }
-    };
-
-    void checkTranscriptionService();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!chatDraft.trim() && speechToTextState === "review") setSpeechToTextState("idle");
   }, [chatDraft, speechToTextState]);
 
@@ -4782,164 +4763,54 @@ function ChatPanel({
   const resetSpeechPreview = () => {
     if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
     setSpeechPreviewUrl("");
-    setSpeechPreviewBlob(null);
+    latestSpeechPreviewBlobRef.current = null;
+  };
+
+  const syncSpeechDraftFromTranscript = (includeInterim: boolean) => {
+    const base = speechBaseDraftRef.current.trim();
+    const finalTranscript = speechFinalTranscriptRef.current.trim();
+    const interimTranscript = includeInterim ? speechInterimTranscriptRef.current.trim() : "";
+    const nextDraft = [base, finalTranscript, interimTranscript].filter(Boolean).join(" ").trim();
+    setChatDraft(nextDraft);
+    return nextDraft;
   };
 
   const stopSpeechRecorder = () => {
     if (!speechRecorderRef.current || speechRecorderRef.current.state === "inactive") return;
     setSpeechToTextState("transcribing");
-    setSpeechTranscriptInterim("Turning your voice into text...");
+    setSpeechTranscriptInterim("Finishing your recording...");
     speechRecorderRef.current.stop();
   };
 
   const stopSpeechToText = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+    }
     if (speechRecorderRef.current?.state === "recording") {
       stopSpeechRecorder();
       return;
     }
-    if (speechRecognitionRef.current) {
-      setSpeechTranscriptInterim("");
-      speechRecognitionRef.current.stop();
-      return;
-    }
-    setSpeechToTextState("idle");
+    const nextDraft = syncSpeechDraftFromTranscript(true);
+    setSpeechToTextState(nextDraft || latestSpeechPreviewBlobRef.current ? "review" : "idle");
     setSpeechTranscriptInterim("");
+    speechInterimTranscriptRef.current = "";
   };
 
-  const appendTranscriptToDraft = (transcript: string) => {
-    const cleanTranscript = transcript.trim();
-    if (!cleanTranscript) return;
-    const base = speechBaseDraftRef.current.trim();
-    const nextDraft = [base, cleanTranscript].filter(Boolean).join(base && cleanTranscript ? " " : "").trim();
-    setChatDraft(nextDraft);
-    setSpeechToTextState("review");
-    setSpeechTranscriptInterim("");
-  };
-
-  const startBrowserSpeechToText = () => {
+  const startDeviceSpeechToText = async () => {
     const RecognitionConstructor = getSpeechRecognitionConstructor();
     if (!RecognitionConstructor) {
-      closeMenuWithNotice("Speech-to-text is not supported on this device yet. Try Chrome or Edge on a connected device.");
+      closeMenuWithNotice("Speech-to-text is not supported on this device yet. Try Chrome or Edge on this phone.");
       return;
     }
-    if (speechToTextState === "listening") {
-      stopSpeechToText();
-      return;
-    }
-
-    const recognition = new RecognitionConstructor();
-    speechRecognitionRef.current = recognition;
-    speechBaseDraftRef.current = chatDraft.trim();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.lang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language || "en-ZA" : "en-ZA";
-
-    recognition.onstart = () => {
-      setSpeechToTextState("listening");
-      setSpeechTranscriptInterim("Listening for your words...");
-      setShowAttachMenu(false);
-      setShowEmojiPicker(false);
-      setShowRecordMenu(false);
-    };
-
-    recognition.onresult = (event) => {
-      const finalParts: string[] = [];
-      const interimParts: string[] = [];
-      for (let index = 0; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result[0]?.transcript?.trim();
-        if (!transcript) continue;
-        if (result.isFinal) finalParts.push(transcript);
-        else interimParts.push(transcript);
-      }
-
-      const base = speechBaseDraftRef.current;
-      const finalTranscript = finalParts.join(" ").trim();
-      const interimTranscript = interimParts.join(" ").trim();
-      const committedDraft = [base, finalTranscript].filter(Boolean).join(base && finalTranscript ? " " : "").trim();
-      const visibleDraft = [committedDraft, interimTranscript].filter(Boolean).join(committedDraft && interimTranscript ? " " : "").trim();
-
-      setSpeechTranscriptInterim(interimTranscript);
-      setChatDraft(visibleDraft);
-    };
-
-    recognition.onerror = (event) => {
-      if (event.error === "aborted") {
-        setSpeechToTextState((current) => (latestChatDraftRef.current.trim() ? "review" : current === "listening" ? "idle" : current));
-        setSpeechTranscriptInterim("");
-        return;
-      }
-      const message =
-        event.error === "not-allowed"
-          ? "Microphone permission is needed for speech-to-text."
-          : event.error === "no-speech"
-            ? "No speech was detected. Try again and speak clearly."
-            : "Speech-to-text stopped unexpectedly. Please try again.";
-      setSpeechToTextState("idle");
-      setSpeechTranscriptInterim("");
-      closeMenuWithNotice(message);
-    };
-
-    recognition.onend = () => {
-      speechRecognitionRef.current = null;
-      setSpeechToTextState((current) => (latestChatDraftRef.current.trim() ? "review" : current === "listening" ? "idle" : current));
-      setSpeechTranscriptInterim("");
-    };
-
-    recognition.start();
-  };
-
-  const transcribeRecordedSpeech = async (blob: Blob) => {
-    const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
-    const file = new File([blob], `speech-draft.${extension}`, { type: blob.type || "audio/webm" });
-    const formData = new FormData();
-    formData.set("audio", file);
-    formData.set("language", typeof navigator !== "undefined" ? navigator.language || "en-ZA" : "en-ZA");
-
-    try {
-      setSpeechToTextState("transcribing");
-      setSpeechTranscriptInterim("");
-      const response = await fetch("/api/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string; fallback?: "browser" | null };
-        if (payload.fallback === "browser") {
-          setServerTranscriptionAvailable(false);
-          setSpeechToTextState("review");
-          setSpeechTranscriptInterim("");
-          closeMenuWithNotice(payload.error || "Server transcription is not configured yet. The recording is ready to preview, but speech-to-text needs the transcription service enabled.");
-          return;
-        }
-        throw new Error(payload.error || "Transcription failed");
-      }
-
-      const payload = (await response.json()) as { text?: string };
-      appendTranscriptToDraft(payload.text || "");
-    } catch (transcriptionError) {
-      console.error("Could not transcribe speech", transcriptionError);
-      setSpeechToTextState("review");
-      setSpeechTranscriptInterim("");
-      closeMenuWithNotice("Could not turn that recording into text right now. You can preview the recording, then try again.");
-    }
-  };
-
-  const startServerSpeechToText = async () => {
     if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      startBrowserSpeechToText();
-      return;
-    }
-
-    if (speechRecorderRef.current?.state === "recording") {
-      stopSpeechRecorder();
+      closeMenuWithNotice("Voice capture is not supported on this device yet.");
       return;
     }
 
     try {
       speechBaseDraftRef.current = chatDraft.trim();
+      speechFinalTranscriptRef.current = "";
+      speechInterimTranscriptRef.current = "";
       resetSpeechPreview();
       setShowAttachMenu(false);
       setShowEmojiPicker(false);
@@ -4948,8 +4819,16 @@ function ChatPanel({
       speechTranscriptionStreamRef.current = stream;
       const preferredMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
+      const recognition = new RecognitionConstructor();
+
       speechRecorderRef.current = recorder;
+      speechRecognitionRef.current = recognition;
       speechRecorderChunksRef.current = [];
+
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.lang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language || "en-ZA" : "en-ZA";
 
       recorder.ondataavailable = (event) => {
         if (event.data.size) speechRecorderChunksRef.current.push(event.data);
@@ -4957,13 +4836,13 @@ function ChatPanel({
 
       recorder.onstart = () => {
         setSpeechToTextState("listening");
-        setSpeechTranscriptInterim("Recording your voice...");
+        setSpeechTranscriptInterim("Listening for your words...");
       };
 
       recorder.onerror = () => {
         setSpeechToTextState("idle");
         setSpeechTranscriptInterim("");
-        closeMenuWithNotice("Could not capture your voice for transcription. Please try again.");
+        closeMenuWithNotice("Could not capture your voice right now. Please try again.");
       };
 
       recorder.onstop = () => {
@@ -4978,15 +4857,66 @@ function ChatPanel({
           return;
         }
         const previewUrl = URL.createObjectURL(recordedBlob);
-        setSpeechPreviewBlob(recordedBlob);
+        latestSpeechPreviewBlobRef.current = recordedBlob;
         setSpeechPreviewUrl(previewUrl);
-        void transcribeRecordedSpeech(recordedBlob);
+        setSpeechToTextState((current) => (latestChatDraftRef.current.trim() || recordedBlob.size ? "review" : current === "transcribing" ? "idle" : current));
+        setSpeechTranscriptInterim("");
+      };
+
+      recognition.onresult = (event) => {
+        const finalParts: string[] = [];
+        const interimParts: string[] = [];
+        for (let index = 0; index < event.results.length; index += 1) {
+          const result = event.results[index];
+          const transcript = result[0]?.transcript?.trim();
+          if (!transcript) continue;
+          if (result.isFinal) finalParts.push(transcript);
+          else interimParts.push(transcript);
+        }
+
+        const finalTranscript = finalParts.join(" ").trim();
+        const interimTranscript = interimParts.join(" ").trim();
+        speechFinalTranscriptRef.current = finalTranscript;
+        speechInterimTranscriptRef.current = interimTranscript;
+        syncSpeechDraftFromTranscript(true);
+        setSpeechTranscriptInterim(interimTranscript);
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error !== "aborted") {
+          const message =
+            event.error === "not-allowed"
+              ? "Microphone permission is needed for speech-to-text."
+              : event.error === "no-speech"
+                ? "No speech was detected. Try again and speak clearly."
+                : "Speech-to-text stopped unexpectedly. Please try again.";
+          closeMenuWithNotice(message);
+        }
+        speechRecognitionRef.current = null;
+      };
+
+      recognition.onend = () => {
+        speechRecognitionRef.current = null;
+        const nextDraft = syncSpeechDraftFromTranscript(true);
+        setSpeechToTextState((current) => {
+          if (speechRecorderRef.current?.state === "recording") return current;
+          return nextDraft || latestSpeechPreviewBlobRef.current ? "review" : current === "listening" || current === "transcribing" ? "idle" : current;
+        });
+        setSpeechTranscriptInterim("");
+        speechInterimTranscriptRef.current = "";
       };
 
       recorder.start();
-    } catch (recordError) {
-      console.error("Could not start server speech transcription", recordError);
-      startBrowserSpeechToText();
+      recognition.start();
+    } catch (speechError) {
+      console.error("Could not start browser speech-to-text", speechError);
+      speechRecognitionRef.current = null;
+      speechRecorderRef.current = null;
+      speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
+      speechTranscriptionStreamRef.current = null;
+      setSpeechToTextState("idle");
+      setSpeechTranscriptInterim("");
+      closeMenuWithNotice("Could not start speech-to-text. Allow microphone access and try again.");
     }
   };
 
@@ -4997,15 +4927,7 @@ function ChatPanel({
       return;
     }
     resetSpeechPreview();
-    if (serverTranscriptionAvailable) {
-      void startServerSpeechToText();
-      return;
-    }
-    if (typeof navigator !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia)) {
-      void startServerSpeechToText();
-      return;
-    }
-    startBrowserSpeechToText();
+    void startDeviceSpeechToText();
   };
 
   const closeMenuWithNotice = (notice: string) => {
