@@ -4951,6 +4951,13 @@ function ChatPanel({
     }
 
     try {
+     if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+      ) {
+      alert("Your phone/browser does not support microphone access.");
+      return;
+      }
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
       speechBaseDraftRef.current = chatDraft.trim();
