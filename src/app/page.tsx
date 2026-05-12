@@ -1382,15 +1382,21 @@ export default function PartnerScenePage() {
   const likesRemainingToday = hasUnlimitedLikes ? Number.POSITIVE_INFINITY : Math.max(0, dailyLikeLimit - normalizedLikeUsage.count);
   const canLikeToday = hasUnlimitedLikes || likesRemainingToday > 0;
   const visiblePartnerProfiles = useMemo(() => {
-      const baseProfiles = profiles.filter((profile) => {
+      const discoverableProfiles = profiles.filter((profile) => {
         const controls = userControls[profile.user_id] || {};
-        if (controls.blocked || controls.blockedBy) return false;
-        if (!appSettings.enableDiscovery) return false;
+        return !controls.blocked && !controls.blockedBy;
+      });
+
+      const compatibleProfiles = discoverableProfiles.filter((profile) => {
         if (!matchesPreferredGender(profile, ownDatingProfile?.preferred_gender)) return false;
         if (appSettings.interestedIn !== "Everyone" && profile.gender) {
           const normalizedGender = profile.gender.toLowerCase();
           if (!settingsGenderTargets[appSettings.interestedIn].some((value) => normalizedGender.includes(value))) return false;
         }
+        return true;
+      });
+
+      const preferenceProfiles = (compatibleProfiles.length ? compatibleProfiles : discoverableProfiles).filter((profile) => {
         if (profile.age < appSettings.ageMin || profile.age > appSettings.ageMax) return false;
         const photoCount = [profile.photo_url, ...(profile.gallery_urls || [])].filter(Boolean).length;
         if (photoCount < appSettings.minimumPhotos) return false;
@@ -1399,14 +1405,18 @@ export default function PartnerScenePage() {
         if (smokesFilter !== filterAny && profile.smokes !== smokesFilter) return false;
         if (drinksFilter !== filterAny && profile.drinks !== drinksFilter) return false;
         if (soberDatesOnly && !profile.sober_dates) return false;
-        if (!appSettings.globalMode) {
-          const distanceKm = distanceBetweenProfilesInKm(ownDatingProfile, profile);
-          if (distanceKm !== null && distanceKm > appSettings.maxDistanceKm && !appSettings.allowOutsideRange) return false;
-        }
         return true;
       });
-      const loungeProfiles = baseProfiles.filter((profile) => (profile.intent_lounge || profile.relationship_goal || "Serious Relationship") === activeLounge);
-      return loungeProfiles.length ? loungeProfiles : baseProfiles;
+
+      const distanceProfiles = (preferenceProfiles.length ? preferenceProfiles : compatibleProfiles.length ? compatibleProfiles : discoverableProfiles).filter((profile) => {
+        if (appSettings.globalMode || appSettings.allowOutsideRange) return true;
+        const distanceKm = distanceBetweenProfilesInKm(ownDatingProfile, profile);
+        return distanceKm === null || distanceKm <= appSettings.maxDistanceKm;
+      });
+
+      const loungeBase = distanceProfiles.length ? distanceProfiles : preferenceProfiles.length ? preferenceProfiles : compatibleProfiles.length ? compatibleProfiles : discoverableProfiles;
+      const loungeProfiles = loungeBase.filter((profile) => (profile.intent_lounge || profile.relationship_goal || "Serious Relationship") === activeLounge);
+      return loungeProfiles.length ? loungeProfiles : loungeBase;
     },
     [activeLounge, appSettings, drinksFilter, kidsFilter, ownDatingProfile, profiles, smokesFilter, soberDatesOnly, userControls]
   );
@@ -4733,16 +4743,14 @@ function ChatPanel({
   }, [chatDraft]);
 
   useEffect(() => {
-    if (!chatDraft.trim() && speechToTextState === "review") setSpeechToTextState("idle");
-  }, [chatDraft, speechToTextState]);
+    if (!chatDraft.trim() && !speechPreviewUrl && speechToTextState === "review") setSpeechToTextState("idle");
+  }, [chatDraft, speechPreviewUrl, speechToTextState]);
 
   const sendCurrentMessage = () => {
     const trimmedDraft = chatDraft.trim();
     if (!trimmedDraft) return;
     onSend(replyingTo ? encodeChatReply(replyingTo, trimmedDraft) : trimmedDraft, true);
-    setSpeechToTextState("idle");
-    setSpeechTranscriptInterim("");
-    resetSpeechPreview();
+    resetSpeechDraftSession();
     setReplyingTo(null);
     setOpenActionsFor(null);
     setMessageMenuPosition(null);
@@ -4754,9 +4762,7 @@ function ChatPanel({
     setShowAttachMenu(false);
     setShowEmojiPicker(false);
     onQuickSend(replyTarget ? encodeChatReply(replyTarget, suggestion) : suggestion);
-    setSpeechToTextState("idle");
-    setSpeechTranscriptInterim("");
-    resetSpeechPreview();
+    resetSpeechDraftSession();
     setReplyingTo(null);
   };
 
@@ -4764,6 +4770,26 @@ function ChatPanel({
     if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
     setSpeechPreviewUrl("");
     latestSpeechPreviewBlobRef.current = null;
+  };
+
+  const resetSpeechDraftSession = (restoreBaseDraft = false) => {
+    if (restoreBaseDraft) setChatDraft(speechBaseDraftRef.current.trim());
+    speechBaseDraftRef.current = "";
+    speechFinalTranscriptRef.current = "";
+    speechInterimTranscriptRef.current = "";
+    setSpeechTranscriptInterim("");
+    setSpeechToTextState("idle");
+    resetSpeechPreview();
+  };
+
+  const stopSpeechCapture = () => {
+    if (speechRecorderRef.current && speechRecorderRef.current.state !== "inactive") {
+      speechRecorderRef.current.stop();
+    }
+    speechRecorderRef.current = null;
+    speechRecorderChunksRef.current = [];
+    speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
+    speechTranscriptionStreamRef.current = null;
   };
 
   const syncSpeechDraftFromTranscript = (includeInterim: boolean) => {
@@ -4840,6 +4866,7 @@ function ChatPanel({
       };
 
       recorder.onerror = () => {
+        stopSpeechCapture();
         setSpeechToTextState("idle");
         setSpeechTranscriptInterim("");
         closeMenuWithNotice("Could not capture your voice right now. Please try again.");
@@ -4847,10 +4874,7 @@ function ChatPanel({
 
       recorder.onstop = () => {
         const recordedBlob = new Blob(speechRecorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        speechRecorderRef.current = null;
-        speechRecorderChunksRef.current = [];
-        speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
-        speechTranscriptionStreamRef.current = null;
+        stopSpeechCapture();
         if (!recordedBlob.size) {
           setSpeechToTextState("idle");
           setSpeechTranscriptInterim("");
@@ -4884,6 +4908,7 @@ function ChatPanel({
 
       recognition.onerror = (event) => {
         if (event.error !== "aborted") {
+          stopSpeechCapture();
           const message =
             event.error === "not-allowed"
               ? "Microphone permission is needed for speech-to-text."
@@ -4911,9 +4936,7 @@ function ChatPanel({
     } catch (speechError) {
       console.error("Could not start browser speech-to-text", speechError);
       speechRecognitionRef.current = null;
-      speechRecorderRef.current = null;
-      speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
-      speechTranscriptionStreamRef.current = null;
+      stopSpeechCapture();
       setSpeechToTextState("idle");
       setSpeechTranscriptInterim("");
       closeMenuWithNotice("Could not start speech-to-text. Allow microphone access and try again.");
@@ -5858,15 +5881,15 @@ function ChatPanel({
                     {speechToTextState === "listening"
                       ? "Listening..."
                       : speechToTextState === "transcribing"
-                        ? "Transcribing..."
-                        : "Transcript ready"}
+                        ? "Finishing..."
+                        : "Review ready"}
                   </p>
                   {speechToTextState === "listening" ? (
                     <button type="button" onClick={stopSpeechToText} className="rounded-full bg-rose-500 px-3 py-2 text-xs font-black text-white">
                       Stop
                     </button>
                   ) : speechToTextState === "review" ? (
-                    <button type="button" onClick={() => { resetSpeechPreview(); setSpeechToTextState("idle"); setSpeechTranscriptInterim(""); }} className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white">
+                    <button type="button" onClick={() => resetSpeechDraftSession(true)} className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white">
                       Clear
                     </button>
                   ) : null}
