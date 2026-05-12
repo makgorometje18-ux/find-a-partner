@@ -4951,6 +4951,8 @@ function ChatPanel({
     }
 
     try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+
       speechBaseDraftRef.current = chatDraft.trim();
       speechFinalTranscriptRef.current = "";
       speechInterimTranscriptRef.current = "";
@@ -4961,7 +4963,7 @@ function ChatPanel({
 
       speechRecognitionRef.current = recognition;
 
-      recognition.continuous = true;
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
       recognition.lang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language || "en-ZA" : "en-ZA";
