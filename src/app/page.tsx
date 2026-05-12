@@ -31,6 +31,7 @@ type PlayerRecord = {
 type PlayerPresence = {
   is_online: boolean;
   last_seen_at: string | null;
+  updated_at?: string | null;
 };
 
 type DatingProfile = {
@@ -350,8 +351,16 @@ const settingsGenderTargets = {
   Men: ["man", "men", "male"],
   Everyone: [],
 } satisfies Record<PartnerAppSettings["interestedIn"], string[]>;
-const activeChatLimit = 5;
+const activeChatLimit = 10;
 const premiumUnlimitedTiers: PremiumTier[] = ["plus", "gold", "platinum"];
+const profileAvailabilityOptions = [
+  { value: "Available", accent: "bg-emerald-500", icon: "check" as const },
+  { value: "Busy", accent: "bg-rose-500", icon: "dot" as const },
+  { value: "Do not disturb", accent: "bg-rose-500", icon: "minus" as const },
+  { value: "Be right back", accent: "bg-amber-400", icon: "clock" as const },
+  { value: "Appear away", accent: "bg-amber-400", icon: "clock" as const },
+  { value: "Appear offline", accent: "bg-zinc-500", icon: "cross" as const },
+];
 const voiceAudioConstraints: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 const isProfileVerified = (profile?: Pick<DatingProfile, "contact_verified" | "profile_verified" | "is_photo_verified" | "selfie_url">) =>
   Boolean(profile?.contact_verified || profile?.profile_verified || (profile?.is_photo_verified && profile.selfie_url));
@@ -479,12 +488,21 @@ const fullProfileLocation = (profile?: DatingProfile | null) => {
 };
 const formatLastSeen = (value?: string | null) => {
   const date = value ? new Date(value) : null;
-  const safeDate = date && !Number.isNaN(date.getTime()) ? date : new Date();
-
-  return `Last seen ${safeDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}, ${safeDate.toLocaleTimeString(undefined, {
-    hour: "2-digit",
+  if (!date || Number.isNaN(date.getTime())) return "last seen recently";
+  const safeDate = date;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTargetDay = new Date(safeDate.getFullYear(), safeDate.getMonth(), safeDate.getDate());
+  const dayDiff = Math.round((startOfToday.getTime() - startOfTargetDay.getTime()) / 86400000);
+  const timeLabel = safeDate.toLocaleTimeString(undefined, {
+    hour: "numeric",
     minute: "2-digit",
-  })}`;
+  }).toLowerCase();
+
+  if (dayDiff === 0) return `last seen today at ${timeLabel}`;
+  if (dayDiff === 1) return `last seen yesterday at ${timeLabel}`;
+
+  return `last seen ${safeDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${timeLabel}`;
 };
 
 const buildSmartReplySuggestions = (rawMessage: string, displayName: string) => {
@@ -511,9 +529,12 @@ const presenceFromRow = (
   current?: PlayerPresence
 ): PlayerPresence => {
   const isOnline = Boolean(row.is_online);
+  const wasOnline = Boolean(current?.is_online);
+  const updatedAt = row.updated_at || null;
   return {
     is_online: isOnline,
-    last_seen_at: isOnline ? current?.last_seen_at || row.updated_at || null : row.updated_at || current?.last_seen_at || new Date().toISOString(),
+    last_seen_at: isOnline ? current?.last_seen_at || updatedAt || null : wasOnline ? updatedAt || new Date().toISOString() : current?.last_seen_at || updatedAt || null,
+    updated_at: updatedAt || current?.updated_at || null,
   };
 };
 
@@ -595,6 +616,10 @@ export default function PartnerScenePage() {
   const [chatDraft, setChatDraft] = useState("");
   const [isLightMode, setIsLightMode] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [showOwnProfileMenu, setShowOwnProfileMenu] = useState(false);
+  const [showAvailabilityMenu, setShowAvailabilityMenu] = useState(false);
+  const [ownProfileAvailability, setOwnProfileAvailability] = useState("Available");
+  const [openOwnProfilePhoto, setOpenOwnProfilePhoto] = useState(false);
   const [safetySettings, setSafetySettings] = useState<PartnerSafetySettings>(defaultSafetySettings);
   const [appSettings, setAppSettings] = useState<PartnerAppSettings>(defaultPartnerAppSettings);
   const [dailyLikeUsage, setDailyLikeUsage] = useState<DailyLikeUsage>(defaultDailyLikeUsage);
@@ -625,6 +650,7 @@ export default function PartnerScenePage() {
   const callChannelsRef = useRef<Record<string, ReturnType<typeof supabase.channel>>>({});
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const ringtoneContextRef = useRef<AudioContext | null>(null);
@@ -1689,6 +1715,22 @@ export default function PartnerScenePage() {
     });
   };
 
+  const flushPendingIceCandidates = async (peerConnection?: RTCPeerConnection | null) => {
+    const activeConnection = peerConnection || peerConnectionRef.current;
+    if (!activeConnection?.remoteDescription || !pendingIceCandidatesRef.current.length) return;
+
+    const queuedCandidates = [...pendingIceCandidatesRef.current];
+    pendingIceCandidatesRef.current = [];
+
+    for (const candidate of queuedCandidates) {
+      try {
+        await activeConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (candidateError) {
+        console.warn("Could not add queued call candidate", candidateError);
+      }
+    }
+  };
+
   const createPeerConnection = (matchId: string, peerId: string) => {
     peerConnectionRef.current?.close();
     const peerConnection = new RTCPeerConnection(rtcConfig);
@@ -1711,6 +1753,34 @@ export default function PartnerScenePage() {
       setRemoteCallStream(remoteStream);
     };
 
+    peerConnection.onconnectionstatechange = () => {
+      const connectionState = peerConnection.connectionState;
+      if (connectionState === "connected") {
+        clearCallTimeouts();
+        setCallState((current) => (current ? { ...current, status: "connected", reachedPeer: true, statusMessage: "Call connected." } : current));
+        if (callTimerRef.current === null) startCallTimer();
+        return;
+      }
+
+      if (connectionState === "failed" || connectionState === "disconnected") {
+        setCallState((current) =>
+          current
+            ? {
+                ...current,
+                status: "unreachable",
+                statusMessage: "The network connection for this call was lost. Try again on a stronger connection.",
+              }
+            : current
+        );
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      if (peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "completed") {
+        void flushPendingIceCandidates(peerConnection);
+      }
+    };
+
     peerConnectionRef.current = peerConnection;
     return peerConnection;
   };
@@ -1731,6 +1801,7 @@ export default function PartnerScenePage() {
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
     pendingOfferRef.current = null;
+    pendingIceCandidatesRef.current = [];
     stopCallStreams();
     setCallState(null);
   };
@@ -1765,6 +1836,7 @@ export default function PartnerScenePage() {
 
     try {
       clearCallTimeouts();
+      pendingIceCandidatesRef.current = [];
       const stream = await getCallStream(kind);
       setLocalCallStream(stream);
       const peerConnection = createPeerConnection(activeMatch.id, activeMatchProfile.user_id);
@@ -1816,11 +1888,13 @@ export default function PartnerScenePage() {
     try {
       stopRingtone();
       setCallState((current) => (current ? { ...current, status: "connecting" } : current));
+      pendingIceCandidatesRef.current = [];
       const stream = await getCallStream(callState.kind);
       setLocalCallStream(stream);
       const peerConnection = createPeerConnection(callState.matchId, callState.peerId);
       stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
       await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
+      await flushPendingIceCandidates(peerConnection);
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       sendCallSignal({
@@ -1832,8 +1906,7 @@ export default function PartnerScenePage() {
       });
       pendingOfferRef.current = null;
       clearCallTimeouts();
-      setCallState((current) => (current ? { ...current, status: "connected", reachedPeer: true, statusMessage: "Call connected." } : current));
-      startCallTimer();
+      setCallState((current) => (current ? { ...current, status: "connecting", reachedPeer: true, statusMessage: "Connecting your call..." } : current));
     } catch (callError) {
       console.error("Could not accept call", callError);
       setError("Could not join the call. Allow microphone/camera access and try again.");
@@ -1920,6 +1993,7 @@ export default function PartnerScenePage() {
           const peerProfile = profileMap[callPayload.from || peerId];
           clearCallTimeouts();
           pendingOfferRef.current = callPayload.sdp;
+          pendingIceCandidatesRef.current = [];
           setActiveMatchId(match.id);
           setActiveTab("chat");
           setCallState({
@@ -1972,13 +2046,18 @@ export default function PartnerScenePage() {
 
         if (callPayload.type === "answer" && callPayload.sdp && peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(callPayload.sdp));
+          await flushPendingIceCandidates(peerConnectionRef.current);
           clearCallTimeouts();
-          setCallState((current) => (current ? { ...current, status: "connected", reachedPeer: true, statusMessage: "Call connected." } : current));
-          startCallTimer();
+          setCallState((current) => (current ? { ...current, status: "connecting", reachedPeer: true, statusMessage: "Connecting your call..." } : current));
           return;
         }
 
-        if (callPayload.type === "candidate" && callPayload.candidate && peerConnectionRef.current) {
+        if (callPayload.type === "candidate" && callPayload.candidate) {
+          if (!peerConnectionRef.current?.remoteDescription) {
+            pendingIceCandidatesRef.current.push(callPayload.candidate);
+            return;
+          }
+
           try {
             await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(callPayload.candidate));
           } catch (candidateError) {
@@ -2812,7 +2891,7 @@ export default function PartnerScenePage() {
         ) : null}
 
         {activeTab === "chat" ? (
-          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white lg:flex lg:items-center lg:justify-center lg:p-6" : "rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur"}>
+          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white" : "rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur"}>
             {!activeMatch ? (
               <>
                 <p className="text-sm uppercase tracking-[0.3em] text-white/50">Inbox</p>
@@ -2927,7 +3006,13 @@ export default function PartnerScenePage() {
             </div>
             <p className="mt-5 text-sm uppercase tracking-[0.3em] text-white/50">Profile</p>
             <h2 className="mt-2 text-3xl font-bold">Your dating profile</h2>
-            <OwnProfileCard profile={profileMap[player?.id || ""]} fallbackName={player?.name || "Player"} fallbackAge={player?.age || 18} fallbackCountry={player?.country || "Unknown"} />
+            <OwnProfileCard
+              profile={profileMap[player?.id || ""]}
+              fallbackName={player?.name || "Player"}
+              fallbackAge={player?.age || 18}
+              fallbackCountry={player?.country || "Unknown"}
+              onOpen={() => setShowOwnProfileMenu(true)}
+            />
             <button
               type="button"
               onClick={() => setShowProfileSettings(true)}
@@ -3035,6 +3120,55 @@ export default function PartnerScenePage() {
           onAction={(message) => setStatus(message)}
           onLogout={() => void logout()}
         />
+      ) : null}
+
+      {showOwnProfileMenu ? (
+        <OwnProfileMenu
+          profile={profileMap[player?.id || ""]}
+          fallbackName={player?.name || "Player"}
+          availability={ownProfileAvailability}
+          showAvailabilityMenu={showAvailabilityMenu}
+          onClose={() => {
+            setShowOwnProfileMenu(false);
+            setShowAvailabilityMenu(false);
+          }}
+          onToggleAvailabilityMenu={() => setShowAvailabilityMenu((current) => !current)}
+          onSelectAvailability={(value) => {
+            setOwnProfileAvailability(value);
+            setShowAvailabilityMenu(false);
+          }}
+          onViewProfilePicture={() => {
+            setShowOwnProfileMenu(false);
+            setShowAvailabilityMenu(false);
+            setOpenOwnProfilePhoto(true);
+          }}
+          onEditProfile={() => { setShowOwnProfileMenu(false); window.location.href = "/setup"; }}
+          onOpenSettings={() => {
+            setShowOwnProfileMenu(false);
+            setShowAvailabilityMenu(false);
+            setShowProfileSettings(true);
+          }}
+          onLogout={() => void logout()}
+        />
+      ) : null}
+
+      {openOwnProfilePhoto && profileMap[player?.id || ""]?.photo_url ? (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-black/95 p-4" onClick={() => setOpenOwnProfilePhoto(false)}>
+          <button
+            type="button"
+            onClick={() => setOpenOwnProfilePhoto(false)}
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-2xl font-black text-white backdrop-blur transition hover:bg-white/20"
+            aria-label="Close profile picture"
+          >
+            x
+          </button>
+          <img
+            src={profileMap[player?.id || ""]?.photo_url || ""}
+            alt="Your profile picture"
+            className="max-h-full max-w-full rounded-[2rem] object-contain shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
       ) : null}
       {showLikeLimitModal ? (
         <LikeLimitModal
@@ -3515,6 +3649,8 @@ function ExploreProfileSheet({
   const [dragStartX, setDragStartX] = useState<number | null>(null);
   const partnerLabel = officialPartnerLabel(profile);
   const locationChip = [fullProfileLocation(profile), distanceLabel].filter(Boolean).join("  ");
+  const firstInterest = profile.interests?.[0] || profile.relationship_goal || "Open to meeting someone genuine";
+  const secondInterest = profile.interests?.[1] || "Looking for real chemistry";
   const detailChips = [
     locationChip,
     profile.wants_kids ? `Kids: ${profile.wants_kids}` : null,
@@ -3540,27 +3676,42 @@ function ExploreProfileSheet({
       >
         <div className="relative h-52 shrink-0 bg-[#171a20] sm:h-72">
           {profile.photo_url ? <img src={profile.photo_url} alt={profile.display_name} className="h-full w-full object-cover" /> : null}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#111318] via-[#111318]/18 to-transparent" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06)_0%,rgba(0,0,0,0.18)_40%,rgba(0,0,0,0.84)_100%)]" />
           <button type="button" onClick={onClose} className="absolute left-4 top-4 rounded-full bg-black/55 px-4 py-2 text-sm font-black text-white backdrop-blur">
             Back
           </button>
           <div className="absolute right-4 top-4 flex items-center gap-2">
             {positionLabel ? <span className="rounded-full bg-black/55 px-3 py-2 text-xs font-black text-white/85">{positionLabel}</span> : null}
           </div>
-          <button type="button" onClick={onPrevious} className="absolute right-14 top-[5.1rem] flex h-9 w-9 items-center justify-center rounded-full bg-black/48 text-xl font-black text-white backdrop-blur">
+          <button type="button" onClick={onPrevious} className="absolute right-14 top-[5.1rem] flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/48 text-transparent backdrop-blur" aria-hidden="true" tabIndex={-1}>
             ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹
           </button>
-          <button type="button" onClick={onNext} className="absolute right-4 top-[5.1rem] flex h-9 w-9 items-center justify-center rounded-full bg-black/48 text-xl font-black text-white backdrop-blur">
+          <button type="button" onClick={onNext} className="absolute right-4 top-[5.1rem] flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/48 text-transparent backdrop-blur" aria-hidden="true" tabIndex={-1}>
             ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âº
           </button>
+          <div className="absolute right-4 top-[5.1rem] flex items-center gap-2">
+            <button type="button" onClick={onPrevious} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/48 text-white backdrop-blur transition hover:bg-black/62" aria-label="Previous profile">
+              <BackChevronIcon className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={onNext} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/48 text-white backdrop-blur transition hover:bg-black/62" aria-label="Next profile">
+              <BackChevronIcon className="h-5 w-5 rotate-180" />
+            </button>
+          </div>
           <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-black text-white/85">{profile.intent_lounge || "Explore"}</span>
+              <span className="rounded-full bg-[#eaf8ea] px-3 py-1 text-xs font-black text-emerald-800">Recently Active</span>
               {isProfileVerified(profile) ? <span className="rounded-full bg-sky-400 px-3 py-1 text-[11px] font-black text-slate-950">Verified</span> : null}
               {partnerLabel ? <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-[11px] font-black text-emerald-100">{partnerLabel}</span> : null}
             </div>
-            <h3 className="mt-3 max-w-[85%] text-[2.2rem] font-black leading-[0.92] text-white sm:text-4xl">{profile.display_name}, {profile.age}</h3>
-            <p className="mt-2 text-base text-white/82">{profile.relationship_goal || "Open to seeing where this goes."}</p>
+            <h3 className="mt-3 max-w-[85%] text-[clamp(2rem,8vw,3rem)] font-black leading-[0.92] text-white sm:text-4xl">{profile.display_name} {profile.age}</h3>
+            <p className="mt-3 text-base font-medium text-white/88">{profile.bio || "Open to meeting someone genuine."}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[firstInterest, secondInterest].filter(Boolean).map((interest) => (
+                <span key={interest} className="rounded-full border border-white/16 bg-black/26 px-3 py-2 text-xs font-semibold text-white/88 backdrop-blur">
+                  {interest}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -3570,7 +3721,6 @@ function ExploreProfileSheet({
               <span key={chip} className="rounded-full bg-white/8 px-3 py-2 text-xs font-semibold text-white/76">{chip}</span>
             ))}
           </div>
-          <p className="mt-4 text-[15px] leading-6 text-white/80">{profile.bio}</p>
           {profile.interests?.length ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {profile.interests.slice(0, 8).map((interest) => (
@@ -3707,9 +3857,9 @@ function PartnerSettingsSheet({
           <div className="space-y-4">
             <div className="grid gap-3">
               {[
-                { tier: "platinum" as const, title: "OBE-E platinum", subtitle: "Priority Likes, See who likes you & more", accent: "text-stone-100" },
-                { tier: "gold" as const, title: "OBE-E gold", subtitle: "See who likes you & more", accent: "text-amber-300" },
-                { tier: "plus" as const, title: "OBE-E+", subtitle: "Unlimited Likes & more", accent: "text-rose-400" },
+                { tier: "platinum" as const, title: "Partners platinum", subtitle: "Priority Likes, See who likes you & more", accent: "text-stone-100" },
+                { tier: "gold" as const, title: "Partners gold", subtitle: "See who likes you & more", accent: "text-amber-300" },
+                { tier: "plus" as const, title: "Partners+", subtitle: "Unlimited Likes & more", accent: "text-rose-400" },
               ].map((tier) => (
                 <button
                   key={tier.tier}
@@ -3867,7 +4017,7 @@ function PartnerSettingsSheet({
               <ToggleRow label="Email" checked={appSettings.emailUpdates} onChange={(value) => onAppSettingsChange({ emailUpdates: value })} />
               <ToggleRow label="Push Notifications" checked={appSettings.pushNotifications} onChange={(value) => onAppSettingsChange({ pushNotifications: value })} />
               <ToggleRow label="SMS" checked={appSettings.smsUpdates} onChange={(value) => onAppSettingsChange({ smsUpdates: value })} />
-              <ToggleRow label="Team OBE-E" checked={appSettings.teamPartnerUpdates} onChange={(value) => onAppSettingsChange({ teamPartnerUpdates: value })} />
+              <ToggleRow label="Team Partners" checked={appSettings.teamPartnerUpdates} onChange={(value) => onAppSettingsChange({ teamPartnerUpdates: value })} />
               <button type="button" onClick={onRequestPermissions} className="rounded-[1.4rem] bg-[#15171d] px-4 py-4 text-left text-sm font-bold">Request browser notification permission</button>
             </SettingsSection>
 
@@ -3904,7 +4054,7 @@ function PartnerSettingsSheet({
       {panelState === "phone" ? (
         <SettingsModalShell title="Phone Number" onClose={() => setPanelState(null)}>
           <div className="space-y-4">
-            <p className="text-sm leading-6 text-white/62">Update the phone number used to secure your OBE-E account.</p>
+            <p className="text-sm leading-6 text-white/62">Update the phone number used to secure your Partners account.</p>
             <input
               value={phoneDraft}
               onChange={(event) => setPhoneDraft(event.target.value)}
@@ -4236,7 +4386,7 @@ function LikeLimitModal({
           <button type="button" onClick={onClose} className="text-3xl font-light text-white">x</button>
           <div className="flex items-center gap-2">
             <FlameTabIcon className="h-8 w-8 text-amber-300" />
-            <p className="text-3xl font-black tracking-tight">OBE-E</p>
+            <p className="text-3xl font-black tracking-tight">Partners</p>
             <span className="rounded-md bg-amber-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">gold</span>
           </div>
         </div>
@@ -4271,7 +4421,7 @@ function LikeLimitModal({
           </div>
 
           <div className="mt-7 rounded-[1.3rem] border border-white/14 bg-[#15161b] p-5">
-            <p className="inline-flex rounded-full border border-white/12 bg-black/18 px-3 py-1 text-xs text-white/70">Included with OBE-E Gold</p>
+            <p className="inline-flex rounded-full border border-white/12 bg-black/18 px-3 py-1 text-xs text-white/70">Included with Partners Gold</p>
             <div className="mt-5 grid gap-4">
               {features.map((feature) => (
                 <div key={feature} className="flex items-start gap-3">
@@ -4334,7 +4484,7 @@ function ChatListButton({
 }) {
   if (!profile) return null;
   const isOnline = Boolean(presence?.is_online);
-  const presenceLabel = isOnline ? "Online" : formatLastSeen(presence?.last_seen_at);
+  const presenceLabel = isOnline ? "Online" : formatLastSeen(presence?.last_seen_at || presence?.updated_at);
   const partnerLabel = officialPartnerLabel(profile);
 
   return (
@@ -4619,11 +4769,12 @@ function ChatPanel({
   const isBlockedBy = Boolean(userControls.blockedBy);
   const communicationBlocked = isBlocked || isBlockedBy;
   const partnerLabel = officialPartnerLabel(activeMatchProfile);
-  const presenceLabel = isTyping ? "Typing..." : isOnline ? "Online" : formatLastSeen(presence?.last_seen_at);
+  const presenceLabel = isTyping ? "Typing..." : isOnline ? "Online" : formatLastSeen(presence?.last_seen_at || presence?.updated_at);
   const dividerLabel = formatChatDivider(activeMessages[0]?.created_at);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [openImageUrl, setOpenImageUrl] = useState("");
+  const [showProfileQuickMenu, setShowProfileQuickMenu] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatReplyReference | null>(null);
   const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
@@ -4641,7 +4792,6 @@ function ChatPanel({
   const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
   const [speechToTextState, setSpeechToTextState] = useState<"idle" | "listening" | "transcribing" | "review">("idle");
   const [speechTranscriptInterim, setSpeechTranscriptInterim] = useState("");
-  const [speechPreviewUrl, setSpeechPreviewUrl] = useState("");
   const [videoNoteState, setVideoNoteState] = useState<"idle" | "recording" | "preview">("idle");
   const [videoNoteElapsedSeconds, setVideoNoteElapsedSeconds] = useState(0);
   const [videoNotePreviewBlob, setVideoNotePreviewBlob] = useState<Blob | null>(null);
@@ -4650,13 +4800,9 @@ function ChatPanel({
   const [showRecordMenu, setShowRecordMenu] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const speechRecorderRef = useRef<MediaRecorder | null>(null);
-  const speechRecorderChunksRef = useRef<Blob[]>([]);
-  const speechTranscriptionStreamRef = useRef<MediaStream | null>(null);
   const speechBaseDraftRef = useRef("");
   const speechFinalTranscriptRef = useRef("");
   const speechInterimTranscriptRef = useRef("");
-  const latestSpeechPreviewBlobRef = useRef<Blob | null>(null);
   const latestChatDraftRef = useRef(chatDraft);
   const recordedChunksRef = useRef<Blob[]>([]);
   const discardingVoiceRef = useRef(false);
@@ -4743,8 +4889,8 @@ function ChatPanel({
   }, [chatDraft]);
 
   useEffect(() => {
-    if (!chatDraft.trim() && !speechPreviewUrl && speechToTextState === "review") setSpeechToTextState("idle");
-  }, [chatDraft, speechPreviewUrl, speechToTextState]);
+    if (!chatDraft.trim() && speechToTextState === "review") setSpeechToTextState("idle");
+  }, [chatDraft, speechToTextState]);
 
   const sendCurrentMessage = () => {
     const trimmedDraft = chatDraft.trim();
@@ -4766,12 +4912,6 @@ function ChatPanel({
     setReplyingTo(null);
   };
 
-  const resetSpeechPreview = () => {
-    if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
-    setSpeechPreviewUrl("");
-    latestSpeechPreviewBlobRef.current = null;
-  };
-
   const resetSpeechDraftSession = (restoreBaseDraft = false) => {
     if (restoreBaseDraft) setChatDraft(speechBaseDraftRef.current.trim());
     speechBaseDraftRef.current = "";
@@ -4779,17 +4919,6 @@ function ChatPanel({
     speechInterimTranscriptRef.current = "";
     setSpeechTranscriptInterim("");
     setSpeechToTextState("idle");
-    resetSpeechPreview();
-  };
-
-  const stopSpeechCapture = () => {
-    if (speechRecorderRef.current && speechRecorderRef.current.state !== "inactive") {
-      speechRecorderRef.current.stop();
-    }
-    speechRecorderRef.current = null;
-    speechRecorderChunksRef.current = [];
-    speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
-    speechTranscriptionStreamRef.current = null;
   };
 
   const syncSpeechDraftFromTranscript = (includeInterim: boolean) => {
@@ -4801,23 +4930,15 @@ function ChatPanel({
     return nextDraft;
   };
 
-  const stopSpeechRecorder = () => {
-    if (!speechRecorderRef.current || speechRecorderRef.current.state === "inactive") return;
-    setSpeechToTextState("transcribing");
-    setSpeechTranscriptInterim("Finishing your recording...");
-    speechRecorderRef.current.stop();
-  };
-
   const stopSpeechToText = () => {
     if (speechRecognitionRef.current) {
+      setSpeechToTextState("transcribing");
+      setSpeechTranscriptInterim("Finishing your words...");
       speechRecognitionRef.current.stop();
-    }
-    if (speechRecorderRef.current?.state === "recording") {
-      stopSpeechRecorder();
       return;
     }
     const nextDraft = syncSpeechDraftFromTranscript(true);
-    setSpeechToTextState(nextDraft || latestSpeechPreviewBlobRef.current ? "review" : "idle");
+    setSpeechToTextState(nextDraft ? "review" : "idle");
     setSpeechTranscriptInterim("");
     speechInterimTranscriptRef.current = "";
   };
@@ -4828,63 +4949,26 @@ function ChatPanel({
       closeMenuWithNotice("Speech-to-text is not supported on this device yet. Try Chrome or Edge on this phone.");
       return;
     }
-    if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      closeMenuWithNotice("Voice capture is not supported on this device yet.");
-      return;
-    }
 
     try {
       speechBaseDraftRef.current = chatDraft.trim();
       speechFinalTranscriptRef.current = "";
       speechInterimTranscriptRef.current = "";
-      resetSpeechPreview();
       setShowAttachMenu(false);
       setShowEmojiPicker(false);
       setShowRecordMenu(false);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: voiceAudioConstraints });
-      speechTranscriptionStreamRef.current = stream;
-      const preferredMimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
       const recognition = new RecognitionConstructor();
 
-      speechRecorderRef.current = recorder;
       speechRecognitionRef.current = recognition;
-      speechRecorderChunksRef.current = [];
 
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
       recognition.lang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language || "en-ZA" : "en-ZA";
 
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) speechRecorderChunksRef.current.push(event.data);
-      };
-
-      recorder.onstart = () => {
+      recognition.onstart = () => {
         setSpeechToTextState("listening");
         setSpeechTranscriptInterim("Listening for your words...");
-      };
-
-      recorder.onerror = () => {
-        stopSpeechCapture();
-        setSpeechToTextState("idle");
-        setSpeechTranscriptInterim("");
-        closeMenuWithNotice("Could not capture your voice right now. Please try again.");
-      };
-
-      recorder.onstop = () => {
-        const recordedBlob = new Blob(speechRecorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        stopSpeechCapture();
-        if (!recordedBlob.size) {
-          setSpeechToTextState("idle");
-          setSpeechTranscriptInterim("");
-          return;
-        }
-        const previewUrl = URL.createObjectURL(recordedBlob);
-        latestSpeechPreviewBlobRef.current = recordedBlob;
-        setSpeechPreviewUrl(previewUrl);
-        setSpeechToTextState((current) => (latestChatDraftRef.current.trim() || recordedBlob.size ? "review" : current === "transcribing" ? "idle" : current));
-        setSpeechTranscriptInterim("");
       };
 
       recognition.onresult = (event) => {
@@ -4908,13 +4992,16 @@ function ChatPanel({
 
       recognition.onerror = (event) => {
         if (event.error !== "aborted") {
-          stopSpeechCapture();
           const message =
             event.error === "not-allowed"
               ? "Microphone permission is needed for speech-to-text."
+              : event.error === "audio-capture"
+                ? "Your microphone could not be opened. Check phone mic permission and try again."
               : event.error === "no-speech"
                 ? "No speech was detected. Try again and speak clearly."
                 : "Speech-to-text stopped unexpectedly. Please try again.";
+          setSpeechToTextState(latestChatDraftRef.current.trim() ? "review" : "idle");
+          setSpeechTranscriptInterim("");
           closeMenuWithNotice(message);
         }
         speechRecognitionRef.current = null;
@@ -4923,20 +5010,15 @@ function ChatPanel({
       recognition.onend = () => {
         speechRecognitionRef.current = null;
         const nextDraft = syncSpeechDraftFromTranscript(true);
-        setSpeechToTextState((current) => {
-          if (speechRecorderRef.current?.state === "recording") return current;
-          return nextDraft || latestSpeechPreviewBlobRef.current ? "review" : current === "listening" || current === "transcribing" ? "idle" : current;
-        });
+        setSpeechToTextState(nextDraft ? "review" : "idle");
         setSpeechTranscriptInterim("");
         speechInterimTranscriptRef.current = "";
       };
 
-      recorder.start();
       recognition.start();
     } catch (speechError) {
       console.error("Could not start browser speech-to-text", speechError);
       speechRecognitionRef.current = null;
-      stopSpeechCapture();
       setSpeechToTextState("idle");
       setSpeechTranscriptInterim("");
       closeMenuWithNotice("Could not start speech-to-text. Allow microphone access and try again.");
@@ -4949,7 +5031,6 @@ function ChatPanel({
       stopSpeechToText();
       return;
     }
-    resetSpeechPreview();
     void startDeviceSpeechToText();
   };
 
@@ -5286,15 +5367,12 @@ function ChatPanel({
       stopVoiceTimer();
       stopVideoNoteTimer();
       speechRecognitionRef.current?.stop();
-      speechRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-      speechTranscriptionStreamRef.current?.getTracks().forEach((track) => track.stop());
       recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoNoteRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-      if (speechPreviewUrl) URL.revokeObjectURL(speechPreviewUrl);
       if (videoNotePreviewUrl) URL.revokeObjectURL(videoNotePreviewUrl);
     };
-  }, [speechPreviewUrl, videoNotePreviewUrl, voicePreviewUrl]);
+  }, [videoNotePreviewUrl, voicePreviewUrl]);
 
   useLayoutEffect(() => {
     jumpToLatestMessage();
@@ -5327,18 +5405,18 @@ function ChatPanel({
   }, [openActionsFor]);
 
   return (
-    <div className="flex h-dvh min-h-0 w-full flex-col bg-[#071323] text-white lg:h-[calc(100dvh-3rem)] lg:max-w-6xl lg:overflow-hidden lg:rounded-[1.5rem] lg:border lg:border-white/10 lg:shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
+    <div className="flex h-dvh min-h-0 w-full flex-col bg-[#071323] text-white">
       <div className="relative shrink-0 flex items-center gap-3 border-b border-white/10 bg-[#0b1728] px-4 py-3 shadow-sm">
         <button onClick={onBack} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-black text-white transition hover:bg-white/15" aria-label="Back to chats">
           <BackChevronIcon />
         </button>
 
-        <div className="relative h-12 w-12 shrink-0">
+        <button type="button" onClick={() => setShowProfileQuickMenu(true)} className="relative h-12 w-12 shrink-0" aria-label={`Open ${activeMatchProfile.display_name} profile menu`}>
           <div className="h-full w-full overflow-hidden rounded-full bg-white/10">
             {activeMatchProfile.photo_url ? <img src={activeMatchProfile.photo_url} alt={activeMatchProfile.display_name} className="h-full w-full object-cover" /> : null}
           </div>
           <span className={`absolute bottom-0 right-0 z-10 h-4 w-4 rounded-full border-[3px] border-[#0b1728] ${isOnline ? "bg-emerald-500" : "bg-red-500"}`}></span>
-        </div>
+        </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1">
@@ -5486,6 +5564,7 @@ function ChatPanel({
           shownMessages.map((message) => {
             const isOwnMessage = message.sender_id === activePlayerId;
             const { reply, text: messageBody } = decodeChatReply(message.body);
+            const ownMessageReceipt = message.read_at ? "seen" : isOnline ? "delivered" : "sent";
             const messageWarning = safetySettings.scamWarnings && !isOwnMessage ? riskyMessageWarning(messageBody) : "";
             const messageActionOpen = openActionsFor === message.id;
 
@@ -5702,8 +5781,11 @@ function ChatPanel({
                   ) : null}
                   <p className={`mt-1 flex items-center gap-1 text-[12px] font-medium text-white/45 ${isOwnMessage ? "justify-end text-right" : "justify-start text-left"}`}>
                     {isOwnMessage ? (
-                      <span className={message.read_at ? "text-emerald-400" : "text-white/45"} aria-label={message.read_at ? "Seen" : "Delivered"}>
-                        &#10003;&#10003;
+                      <span
+                        className={ownMessageReceipt === "seen" ? "text-emerald-400" : ownMessageReceipt === "delivered" ? "text-white/70" : "text-white/45"}
+                        aria-label={ownMessageReceipt === "seen" ? "Seen" : ownMessageReceipt === "delivered" ? "Delivered" : "Sent"}
+                      >
+                        {ownMessageReceipt === "sent" ? "\u2713" : "\u2713\u2713"}
                       </span>
                     ) : null}
                     <span>Sent {formatSentAt(message.created_at)}</span>
@@ -5895,7 +5977,7 @@ function ChatPanel({
                   ) : null}
                 </div>
                 {speechTranscriptInterim ? <p className="mt-1 truncate text-xs font-semibold text-emerald-100/70">Hearing: {speechTranscriptInterim}</p> : null}
-                {speechPreviewUrl ? <audio controls src={speechPreviewUrl} className="mt-2 h-9 w-full" /> : null}
+                {speechToTextState === "review" && chatDraft.trim() ? <p className="mt-2 text-xs font-semibold text-emerald-100/75">Your words are ready in the message box below. Review, edit, then send.</p> : null}
               </div>
             ) : null}
             <div className="flex items-end gap-2">
@@ -6014,6 +6096,67 @@ function ChatPanel({
           />
         </div>
       ) : null}
+
+      {showProfileQuickMenu ? (
+        <div className="fixed inset-0 z-[138] bg-black/70 backdrop-blur-sm" onClick={() => setShowProfileQuickMenu(false)}>
+          <div className="mx-auto mt-16 w-[min(92vw,30rem)] overflow-hidden rounded-[1.8rem] border border-white/10 bg-[#242424] text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+              <p className="text-2xl font-black tracking-tight">Partners</p>
+              <button type="button" onClick={() => setShowProfileQuickMenu(false)} className="text-lg font-medium text-white/82 transition hover:text-white">
+                Close
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <div className="flex items-center gap-4">
+                <div className="h-20 w-20 overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10">
+                  {activeMatchProfile.photo_url ? <img src={activeMatchProfile.photo_url} alt={activeMatchProfile.display_name} className="h-full w-full object-cover" /> : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[2rem] font-black leading-none">{activeMatchProfile.display_name}</p>
+                  <p className="mt-2 truncate text-lg text-white/82">{presenceLabel}</p>
+                  <p className="mt-1 truncate text-base text-white/62">{distanceLabel || activeMatchProfile.location_label || activeMatchProfile.city}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileQuickMenu(false);
+                    if (activeMatchProfile.photo_url) setOpenImageUrl(activeMatchProfile.photo_url);
+                  }}
+                  className="flex w-full items-center justify-between rounded-[1.1rem] px-4 py-3 text-left text-xl transition hover:bg-white/10"
+                >
+                  <span>View profile picture</span>
+                  <span className="text-2xl text-white/70">›</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileQuickMenu(false);
+                    closeMenuWithNotice(`${activeMatchProfile.display_name}, ${activeMatchProfile.age}. ${officialPartnerLabel(activeMatchProfile) || activeMatchProfile.relationship_goal || "Available to connect."}`);
+                  }}
+                  className="flex w-full items-center justify-between rounded-[1.1rem] px-4 py-3 text-left text-xl transition hover:bg-white/10"
+                >
+                  <span>View profile</span>
+                  <span className="text-2xl text-white/70">›</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileQuickMenu(false);
+                    closeMenuWithNotice(isOnline ? `${activeMatchProfile.display_name} is online now.` : presenceLabel);
+                  }}
+                  className="flex w-full items-center justify-between rounded-[1.1rem] px-4 py-3 text-left text-xl transition hover:bg-white/10"
+                >
+                  <span>View status</span>
+                  <span className="text-2xl text-white/70">›</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -6042,6 +6185,10 @@ function CallOverlay({
   const isVideo = callState.kind === "video";
   const isIncoming = callState.status === "incoming";
   const isFailureState = callState.status === "unreachable" || callState.status === "no-answer" || callState.status === "declined";
+  const [localPreviewPosition, setLocalPreviewPosition] = useState({ x: 20, y: 32 });
+  const [localPreviewDragStart, setLocalPreviewDragStart] = useState<{ pointerX: number; pointerY: number; originX: number; originY: number } | null>(null);
+  const previewWidth = 112;
+  const previewHeight = 144;
   const formatCallDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -6119,7 +6266,30 @@ function CallOverlay({
                 autoPlay
                 playsInline
                 muted
-                className="absolute bottom-32 right-5 h-36 w-28 rounded-[1.6rem] border border-white/15 bg-black object-cover shadow-[0_18px_50px_rgba(0,0,0,0.45)]"
+                className="absolute h-36 w-28 rounded-[1.6rem] border border-white/15 bg-black object-cover shadow-[0_18px_50px_rgba(0,0,0,0.45)] touch-none"
+                style={{ right: `${localPreviewPosition.x}px`, bottom: `${localPreviewPosition.y}px` }}
+                onPointerDown={(event) => {
+                  setLocalPreviewDragStart({
+                    pointerX: event.clientX,
+                    pointerY: event.clientY,
+                    originX: localPreviewPosition.x,
+                    originY: localPreviewPosition.y,
+                  });
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (!localPreviewDragStart) return;
+                  const nextX = localPreviewDragStart.originX - (event.clientX - localPreviewDragStart.pointerX);
+                  const nextY = localPreviewDragStart.originY - (event.clientY - localPreviewDragStart.pointerY);
+                  const maxX = Math.max(0, window.innerWidth - previewWidth - 20);
+                  const maxY = Math.max(0, window.innerHeight - previewHeight - 140);
+                  setLocalPreviewPosition({
+                    x: Math.max(8, Math.min(maxX, nextX)),
+                    y: Math.max(96, Math.min(maxY, nextY)),
+                  });
+                }}
+                onPointerUp={() => setLocalPreviewDragStart(null)}
+                onPointerCancel={() => setLocalPreviewDragStart(null)}
               />
             </>
           ) : (
@@ -6157,10 +6327,10 @@ function CallOverlay({
     </div>
   );
 }
-function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry }: { profile?: DatingProfile; fallbackName: string; fallbackAge: number; fallbackCountry: string; }) {
+function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry, onOpen }: { profile?: DatingProfile; fallbackName: string; fallbackAge: number; fallbackCountry: string; onOpen: () => void; }) {
   const partnerLabel = officialPartnerLabel(profile);
   return (
-    <div className="mt-5 overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101827] shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+    <button type="button" onClick={onOpen} className="mt-5 block w-full overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101827] text-left shadow-[0_18px_50px_rgba(0,0,0,0.24)] transition hover:border-white/20 hover:bg-[#142033]">
       <div className="border-b border-white/10 bg-white/[0.03] p-4">
         <div className="flex gap-4">
           <div className="h-28 w-24 shrink-0 overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
@@ -6191,6 +6361,110 @@ function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry }:
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">{(profile?.interests || []).map((interest) => <span key={interest} className="rounded-full bg-white/10 px-3 py-2 text-xs text-white/75">{interest}</span>)}</div>
+      </div>
+    </button>
+  );
+}
+
+function AvailabilityStatusIcon({ type, accent }: { type: "check" | "dot" | "minus" | "clock" | "cross"; accent: string }) {
+  return (
+    <span className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-black text-black ${accent}`}>
+      {type === "check" ? "✓" : type === "dot" ? "•" : type === "minus" ? "−" : type === "clock" ? "◔" : "×"}
+    </span>
+  );
+}
+
+function OwnProfileMenu({
+  profile,
+  fallbackName,
+  availability,
+  showAvailabilityMenu,
+  onClose,
+  onToggleAvailabilityMenu,
+  onSelectAvailability,
+  onViewProfilePicture,
+  onEditProfile,
+  onOpenSettings,
+  onLogout,
+}: {
+  profile?: DatingProfile;
+  fallbackName: string;
+  availability: string;
+  showAvailabilityMenu: boolean;
+  onClose: () => void;
+  onToggleAvailabilityMenu: () => void;
+  onSelectAvailability: (value: string) => void;
+  onViewProfilePicture: () => void;
+  onEditProfile: () => void;
+  onOpenSettings: () => void;
+  onLogout: () => void;
+}) {
+  const activeStatus = profileAvailabilityOptions.find((option) => option.value === availability) || profileAvailabilityOptions[0];
+  const accountLabel = `${(profile?.display_name || fallbackName).replace(/\s+/g, "").toLowerCase()}@partners.app`;
+
+  return (
+    <div className="fixed inset-0 z-[130] bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="mx-auto mt-16 w-[min(92vw,30rem)] overflow-visible rounded-[1.8rem] border border-white/10 bg-[#242424] text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)]" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <p className="text-3xl font-black tracking-tight">Partners</p>
+          <button type="button" onClick={onLogout} className="text-lg font-medium text-white/82 transition hover:text-white">
+            Sign out
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <div className="flex items-center gap-4">
+            <div className="h-20 w-20 overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10">
+              {profile?.photo_url ? <img src={profile.photo_url} alt="Your profile" className="h-full w-full object-cover" /> : null}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[2rem] font-black leading-none">{profile?.display_name || fallbackName}</p>
+              <p className="mt-2 truncate text-lg text-white/82">{accountLabel}</p>
+              <button type="button" onClick={onEditProfile} className="mt-2 text-left text-lg text-white/78 transition hover:text-white">
+                View account
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <div className="relative">
+              <button type="button" onClick={onToggleAvailabilityMenu} className="flex w-full items-center justify-between rounded-[1.1rem] border border-white/80 px-4 py-3 text-left">
+                <span className="flex items-center gap-3 text-xl">
+                  <AvailabilityStatusIcon type={activeStatus.icon} accent={activeStatus.accent} />
+                  <span>{availability}</span>
+                </span>
+                <span className="text-2xl text-white/70">›</span>
+              </button>
+              {showAvailabilityMenu ? (
+                <div className="absolute left-16 top-[calc(100%+0.6rem)] z-10 w-[min(18rem,calc(100vw-6rem))] overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#2a2a2a] shadow-[0_20px_60px_rgba(0,0,0,0.42)]">
+                  <div className="p-3">
+                    {profileAvailabilityOptions.map((option) => (
+                      <button key={option.value} type="button" onClick={() => onSelectAvailability(option.value)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xl transition hover:bg-white/10">
+                        <AvailabilityStatusIcon type={option.icon} accent={option.accent} />
+                        <span>{option.value}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="border-t border-white/10 p-3">
+                    <button type="button" onClick={() => onSelectAvailability("Available")} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xl transition hover:bg-white/10">
+                      <span className="flex h-7 w-7 items-center justify-center text-xl text-indigo-300">↺</span>
+                      <span>Reset status</span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <button type="button" onClick={onViewProfilePicture} className="flex w-full items-center justify-between rounded-[1.1rem] px-4 py-3 text-left text-xl transition hover:bg-white/10">
+              <span>View profile picture</span>
+              <span className="text-2xl text-white/70">›</span>
+            </button>
+            <button type="button" onClick={onOpenSettings} className="flex w-full items-center justify-between rounded-[1.1rem] px-4 py-3 text-left text-xl transition hover:bg-white/10">
+              <span>Open settings</span>
+              <span className="text-2xl text-white/70">›</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
