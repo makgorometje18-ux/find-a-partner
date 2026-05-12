@@ -5004,7 +5004,7 @@ function ChatPanel({
                 : "Speech-to-text stopped unexpectedly. Please try again.";
           setSpeechToTextState(latestChatDraftRef.current.trim() ? "review" : "idle");
           setSpeechTranscriptInterim("");
-          closeMenuWithNotice(message);
+          alert(message);
         }
         speechRecognitionRef.current = null;
       };
