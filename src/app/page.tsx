@@ -609,8 +609,8 @@ export default function PartnerScenePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("Swipe, explore, match, and chat with real player profiles.");
-  const [activeTab, setActiveTab] = useState<AppTab>("swipe");
+  const [status, setStatus] = useState("Chat with your matches and manage your profile.");
+  const [activeTab, setActiveTab] = useState<AppTab>("chat");
   const [stackIndex, setStackIndex] = useState(0);
   const [activeMatchId, setActiveMatchId] = useState("");
   const [chatDraft, setChatDraft] = useState("");
@@ -780,11 +780,12 @@ export default function PartnerScenePage() {
         return;
       }
 
-      const { data: playerData, error: playerError } = await supabase
+      const { data: playerRows, error: playerError } = await supabase
         .from("players")
         .select("id, name, age, money, health, happiness, education, country, is_online, updated_at")
         .eq("id", user.id)
-        .single();
+        .limit(1);
+      const playerData = (playerRows?.[0] || null) as PlayerRecord | null;
 
       if (playerError || !playerData) {
         setError(playerError?.message || "Could not open the partner finder.");
@@ -807,11 +808,12 @@ export default function PartnerScenePage() {
         }
       }
 
-      const { data: ownProfile, error: ownProfileError } = await supabase
+      const { data: ownProfileRows, error: ownProfileError } = await supabase
         .from("dating_profiles")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .limit(1);
+      const ownProfile = (ownProfileRows?.[0] || null) as DatingProfile | null;
 
       if (ownProfileError) {
         setError(schemaHelp);
@@ -1105,7 +1107,7 @@ export default function PartnerScenePage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab === "swipe" || tab === "explore" || tab === "likes" || tab === "chat" || tab === "profile") {
+    if (tab === "chat" || tab === "profile") {
       setActiveTab(tab);
     }
   }, []);
@@ -2125,7 +2127,7 @@ export default function PartnerScenePage() {
           void showSystemNotification({
             title: "New like waiting",
             body: "Someone new liked your profile. Open the app to see who it is.",
-            url: "/?tab=likes",
+            url: "/?tab=chat",
             tag: `dating-like-${player.id}`,
           });
         }
@@ -3053,11 +3055,9 @@ export default function PartnerScenePage() {
 
       {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#0b0d11]/96 px-4 py-3 text-xs text-white/65 shadow-[0_-18px_45px_rgba(0,0,0,0.45)] backdrop-blur">
         {[
-          { id: "swipe", label: "Swipe", icon: <FlameTabIcon /> },
-          { id: "explore", label: "Explore", icon: <CompassTabIcon /> },
-          { id: "likes", label: "Likes", icon: <HeartTabIcon /> },
-          { id: "chat", label: "Chat", icon: <ChatTabIcon /> },
-          { id: "profile", label: "Profile", icon: <ProfileTabIcon /> },
+          { id: "home", label: "Home", icon: "⌂" },
+          { id: "chat", label: "Chat", icon: "◌" },
+          { id: "profile", label: "Profile", icon: "◍" },
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id as AppTab)} className="flex min-w-[3.8rem] flex-col items-center gap-1 rounded-2xl px-2 py-1.5">
             <span className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-sm font-black shadow-lg transition ${

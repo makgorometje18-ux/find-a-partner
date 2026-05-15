@@ -423,11 +423,12 @@ export default function PartnerSetupPage() {
       throw new Error("Your login session changed. Please log in again.");
     }
 
-    const { data: existingPlayer, error: existingPlayerError } = await supabase
+    const { data: existingPlayerRows, error: existingPlayerError } = await supabase
       .from("players")
       .select("id, name, age, country, email")
       .eq("id", user.id)
-      .maybeSingle();
+      .limit(1);
+    const existingPlayer = (existingPlayerRows?.[0] || null) as PlayerRecord | null;
 
     if (existingPlayerError) {
       throw new Error(existingPlayerError.message || "Could not check your player record.");
@@ -480,11 +481,12 @@ export default function PartnerSetupPage() {
           return;
         }
 
-        const { data: playerData, error: playerError } = await supabase
+        const { data: playerRows, error: playerError } = await supabase
           .from("players")
           .select("id, name, age, country")
           .eq("id", user.id)
-          .single();
+          .limit(1);
+        const playerData = (playerRows?.[0] || null) as PlayerRecord | null;
 
         if (playerError || !playerData) {
           setError(playerError?.message || "Could not load your player record.");
@@ -492,11 +494,12 @@ export default function PartnerSetupPage() {
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profileRows, error: profileError } = await supabase
           .from("dating_profiles")
           .select("*")
           .eq("user_id", user.id)
-          .maybeSingle();
+          .limit(1);
+        const profileData = (profileRows?.[0] || null) as ExistingProfile | null;
 
         if (profileError && !profileError.message.toLowerCase().includes("no rows")) {
           setError("Dating setup is missing in Supabase. Run the SQL in supabase/dating_schema.sql first.");
@@ -504,8 +507,8 @@ export default function PartnerSetupPage() {
           return;
         }
 
-        const typedProfile = profileData as ExistingProfile | null;
-        setPlayer(playerData as PlayerRecord);
+        const typedProfile = profileData;
+        setPlayer(playerData);
         setDisplayName(typedProfile?.display_name || playerData.name || "");
         setAge(String(typedProfile?.age || playerData.age || 18));
         setCity(typedProfile?.city || playerData.country || "");
