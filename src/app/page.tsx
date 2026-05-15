@@ -2781,7 +2781,7 @@ export default function PartnerScenePage() {
       <div className={`mx-auto flex w-full flex-col ${activeMatch ? "h-dvh max-w-6xl gap-0 lg:h-[calc(100dvh-3rem)]" : "max-w-md gap-5 lg:max-w-5xl"}`}>
         {error ? <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
-<<<<<<< HEAD
+home
         {activeTab === "swipe" ? (
           <section className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur">
             <div className="rounded-[1.7rem] border border-white/8 bg-white/[0.03] px-4 py-3">
@@ -2796,12 +2796,12 @@ export default function PartnerScenePage() {
                 </div>
               </div>
             </div>
-=======
+home
         {activeTab === "home" ? (
           <section className="rounded-[1.6rem] border border-white/10 bg-black/35 p-3 shadow-xl backdrop-blur">
             <p className="text-sm uppercase tracking-[0.3em] text-white/50">Encounters</p>
             <h2 className="mt-1 text-3xl font-bold">home</h2>
->>>>>>> b90f14f (Renamed swipe tab to home)
+home b90f14f (Renamed swipe tab to home)
             <DiscoveryControls
               activeLounge={activeLounge}
               onLoungeChange={setActiveLounge}
