@@ -2781,14 +2781,13 @@ export default function PartnerScenePage() {
       <div className={`mx-auto flex w-full flex-col ${activeMatch ? "h-dvh max-w-6xl gap-0 lg:h-[calc(100dvh-3rem)]" : "max-w-md gap-5 lg:max-w-5xl"}`}>
         {error ? <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
-home
-        {activeTab === "swipe" ? (
+        {activeTab === "home" ? (
           <section className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur">
             <div className="rounded-[1.7rem] border border-white/8 bg-white/[0.03] px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.38em] text-white/45">Discover</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-3xl font-black tracking-tight text-white">Swipe</h2>
+                  <h2 className="text-3xl font-black tracking-tight text-white">Home</h2>
                   <p className="mt-1 text-sm text-white/58">Find your next real connection.</p>
                 </div>
                 <div className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-3 py-1.5 text-xs font-black text-emerald-100">
@@ -2796,12 +2795,6 @@ home
                 </div>
               </div>
             </div>
-home
-        {activeTab === "home" ? (
-          <section className="rounded-[1.6rem] border border-white/10 bg-black/35 p-3 shadow-xl backdrop-blur">
-            <p className="text-sm uppercase tracking-[0.3em] text-white/50">Encounters</p>
-            <h2 className="mt-1 text-3xl font-bold">home</h2>
-home b90f14f (Renamed swipe tab to home)
             <DiscoveryControls
               activeLounge={activeLounge}
               onLoungeChange={setActiveLounge}
@@ -2816,7 +2809,7 @@ home b90f14f (Renamed swipe tab to home)
               soberDatesOnly={soberDatesOnly}
               onSoberDatesOnlyChange={setSoberDatesOnly}
             />
-            {currentProfile ? <homeCard profile={currentProfile} distanceLabel={distanceForProfile(currentProfile)} saving={saving} onPass={passProfile} onLike={() => void likeProfile()} onSuperLike={() => void likeProfile(true)} /> : <EmptyhomeState />}
+            {currentProfile ? <HomeCard profile={currentProfile} distanceLabel={distanceForProfile(currentProfile)} saving={saving} onPass={passProfile} onLike={() => void likeProfile()} onSuperLike={() => void likeProfile(true)} /> : <EmptyHomeState />}
           </section>
         ) : null}
 
@@ -3069,7 +3062,7 @@ home b90f14f (Renamed swipe tab to home)
           <button key={item.id} onClick={() => setActiveTab(item.id as AppTab)} className="flex min-w-[3.8rem] flex-col items-center gap-1 rounded-2xl px-2 py-1.5">
             <span className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-sm font-black shadow-lg transition ${
               activeTab === item.id
-                ? item.id === "swipe"
+                ? item.id === "home"
                   ? "border-white/10 bg-white text-slate-950"
                   : item.id === "likes"
                     ? "border-amber-300/20 bg-amber-400 text-slate-950"
@@ -3336,7 +3329,7 @@ function MatchCelebration({
   );
 }
 
-function homeCard({
+function HomeCard({
   profile,
   distanceLabel,
   saving,
@@ -3353,12 +3346,12 @@ function homeCard({
 }) {
   const [dragStartX, setDragStartX] = useState<number | null>(null);
   const [dragOffsetX, setDragOffsetX] = useState(0);
-  const homeThreshold = 78;
+  const swipeThreshold = 78;
   const firstInterest = profile.interests?.[0] || profile.relationship_goal || "Open to meeting someone genuine";
   const secondInterest = profile.interests?.[1] || "Looking for real chemistry";
 
-  const finishhome = () => {
-    if (!saving && Math.abs(dragOffsetX) > homeThreshold) {
+  const finishSwipe = () => {
+    if (!saving && Math.abs(dragOffsetX) > swipeThreshold) {
       onPass();
     }
 
@@ -3382,7 +3375,7 @@ function homeCard({
         if (dragStartX === null || saving) return;
         setDragOffsetX(Math.max(-130, Math.min(130, event.clientX - dragStartX)));
       }}
-      onPointerUp={finishhome}
+      onPointerUp={finishSwipe}
       onPointerCancel={() => {
         setDragStartX(null);
         setDragOffsetX(0);
@@ -3458,8 +3451,8 @@ function homeCard({
   );
 }
 
-function EmptyhomeState() {
-  return <div className="mt-5 rounded-[2rem] border border-white/10 bg-white/5 p-6"><p className="text-sm uppercase tracking-[0.3em] text-white/50">No More Profiles</p><h3 className="mt-3 text-2xl font-bold">The deck is empty right now</h3><p className="mt-3 text-sm leading-7 text-white/75">As more real players create verified profiles, they will appear here under home.</p></div>;
+function EmptyHomeState() {
+  return <div className="mt-5 rounded-[2rem] border border-white/10 bg-white/5 p-6"><p className="text-sm uppercase tracking-[0.3em] text-white/50">No More Profiles</p><h3 className="mt-3 text-2xl font-bold">The deck is empty right now</h3><p className="mt-3 text-sm leading-7 text-white/75">As more real players create verified profiles, they will appear here under Home.</p></div>;
 }
 
 function DiscoveryControls({
@@ -6365,7 +6358,7 @@ function OwnProfileCard({ profile, fallbackName, fallbackAge, fallbackCountry, o
       </div>
       <div className="p-4">
         <p className="text-xs uppercase tracking-[0.28em] text-white/45">Profile summary</p>
-        <p className="mt-3 text-sm leading-7 text-white/80">{profile?.bio || "Finish your profile setup to appear in home and Explore."}</p>
+        <p className="mt-3 text-sm leading-7 text-white/80">{profile?.bio || "Finish your profile setup to appear in Home and Explore."}</p>
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div className="rounded-2xl bg-white/5 px-3 py-3">
             <p className="font-black text-white">Visibility</p>
