@@ -94,7 +94,7 @@ type DatingReportRow = {
   reason: string | null;
 };
 
-type AppTab = "home" | "explore" | "likes" | "chat" | "profile";
+type AppTab = "swipe" | "explore" | "likes" | "chat" | "profile";
 type CallKind = "voice" | "video";
 type CallStatus = "idle" | "calling" | "ringing" | "incoming" | "connecting" | "connected" | "unreachable" | "no-answer" | "declined";
 type PartnerSafetySettings = {
@@ -610,7 +610,7 @@ export default function PartnerScenePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Chat with your matches and manage your profile.");
-  const [activeTab, setActiveTab] = useState<AppTab>("chat");
+  const [activeTab, setActiveTab] = useState<AppTab>("swipe");
   const [stackIndex, setStackIndex] = useState(0);
   const [activeMatchId, setActiveMatchId] = useState("");
   const [chatDraft, setChatDraft] = useState("");
@@ -2781,13 +2781,13 @@ export default function PartnerScenePage() {
       <div className={`mx-auto flex w-full flex-col ${activeMatch ? "h-dvh max-w-6xl gap-0 lg:h-[calc(100dvh-3rem)]" : "max-w-md gap-5 lg:max-w-5xl"}`}>
         {error ? <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
-        {activeTab === "home" ? (
+        {activeTab === "swipe" ? (
           <section className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur">
             <div className="rounded-[1.7rem] border border-white/8 bg-white/[0.03] px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.38em] text-white/45">Discover</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-3xl font-black tracking-tight text-white">Home</h2>
+                  <h2 className="text-3xl font-black tracking-tight text-white">Swipe</h2>
                   <p className="mt-1 text-sm text-white/58">Find your next real connection.</p>
                 </div>
                 <div className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-3 py-1.5 text-xs font-black text-emerald-100">
@@ -2809,7 +2809,7 @@ export default function PartnerScenePage() {
               soberDatesOnly={soberDatesOnly}
               onSoberDatesOnlyChange={setSoberDatesOnly}
             />
-            {currentProfile ? <HomeCard profile={currentProfile} distanceLabel={distanceForProfile(currentProfile)} saving={saving} onPass={passProfile} onLike={() => void likeProfile()} onSuperLike={() => void likeProfile(true)} /> : <EmptyHomeState />}
+            {currentProfile ? <SwipeCard profile={currentProfile} distanceLabel={distanceForProfile(currentProfile)} saving={saving} onPass={passProfile} onLike={() => void likeProfile()} onSuperLike={() => void likeProfile(true)} /> : <EmptySwipeState />}
           </section>
         ) : null}
 
@@ -3055,14 +3055,16 @@ export default function PartnerScenePage() {
 
       {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#0b0d11]/96 px-4 py-3 text-xs text-white/65 shadow-[0_-18px_45px_rgba(0,0,0,0.45)] backdrop-blur">
         {[
-          { id: "home", label: "Home", icon: "⌂" },
-          { id: "chat", label: "Chat", icon: "◌" },
-          { id: "profile", label: "Profile", icon: "◍" },
+          { id: "swipe", label: "Swipe", icon: <FlameTabIcon /> },
+          { id: "explore", label: "Explore", icon: <CompassTabIcon /> },
+          { id: "likes", label: "Likes", icon: <HeartTabIcon /> },
+          { id: "chat", label: "Chat", icon: <ChatTabIcon /> },
+          { id: "profile", label: "Profile", icon: <ProfileTabIcon /> },
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id as AppTab)} className="flex min-w-[3.8rem] flex-col items-center gap-1 rounded-2xl px-2 py-1.5">
             <span className={`relative flex h-12 w-12 items-center justify-center rounded-full border text-sm font-black shadow-lg transition ${
               activeTab === item.id
-                ? item.id === "home"
+                ? item.id === "swipe"
                   ? "border-white/10 bg-white text-slate-950"
                   : item.id === "likes"
                     ? "border-amber-300/20 bg-amber-400 text-slate-950"
@@ -3329,7 +3331,7 @@ function MatchCelebration({
   );
 }
 
-function HomeCard({
+function SwipeCard({
   profile,
   distanceLabel,
   saving,
@@ -3451,8 +3453,8 @@ function HomeCard({
   );
 }
 
-function EmptyHomeState() {
-  return <div className="mt-5 rounded-[2rem] border border-white/10 bg-white/5 p-6"><p className="text-sm uppercase tracking-[0.3em] text-white/50">No More Profiles</p><h3 className="mt-3 text-2xl font-bold">The deck is empty right now</h3><p className="mt-3 text-sm leading-7 text-white/75">As more real players create verified profiles, they will appear here under Home.</p></div>;
+function EmptySwipeState() {
+  return <div className="mt-5 rounded-[2rem] border border-white/10 bg-white/5 p-6"><p className="text-sm uppercase tracking-[0.3em] text-white/50">No More Profiles</p><h3 className="mt-3 text-2xl font-bold">The deck is empty right now</h3><p className="mt-3 text-sm leading-7 text-white/75">As more real players create verified profiles, they will appear here under Swipe.</p></div>;
 }
 
 function DiscoveryControls({
@@ -6478,5 +6480,3 @@ function OwnProfileMenu({
     </div>
   );
 }
-
-
