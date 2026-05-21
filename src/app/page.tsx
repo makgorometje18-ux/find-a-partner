@@ -523,7 +523,13 @@ const formatLastSeen = (value?: string | null) => {
 
 const buildSmartReplySuggestions = (rawMessage: string, displayName: string) => {
   const message = rawMessage.trim();
-  if (!message) return ["Hey", "Tell me more", `Hi ${displayName}`, "Sounds good"];
+  if (!message)
+  return [
+    `Hi ${displayName}`,
+    "How are you?",
+    "Nice to meet you",
+    "What are you up to?"
+  ];
   const lower = message.toLowerCase();
 
   if (/\b(hi|hey|hello|heyy|hallo)\b/.test(lower)) return ["Hey there", "Hi, how are you?", "Hello you", "Nice to hear from you"];
@@ -535,9 +541,20 @@ const buildSmartReplySuggestions = (rawMessage: string, displayName: string) => 
   if (/\bgood morning|morning\b/.test(lower)) return ["Good morning", "Morning, hope you slept well", "Have a good day", "Morning you"];
   if (/\bmiss you|thinking about you\b/.test(lower)) return ["I miss you too", "That's sweet", "I'm thinking about you too", "Come closer then"];
   if (/\bwhat are you doing|wyd|u up to\b/.test(lower)) return ["Just relaxing", "Working a bit", "Talking to you", "Not much, you?"];
-  if (/\bcome|see you|meet|date\b/.test(lower)) return ["I'd like that", "Let's plan it", "When are you free?", "Tell me more"];
+  if (/\bcome|see you|meet|date\b/.test(lower))
+return [
+  "I'd like that",
+  "When are you free?",
+  "Where should we meet?",
+  "Sounds like a plan"
+];
   if (/\?$/.test(message)) return ["Yes", "No", "Maybe", "Let me think about it"];
-  return ["Sounds good", "Tell me more", "I like that", "Okay, noted"];
+  return [
+  `What do you mean by that?`,
+  `Can you tell me more?`,
+  `That's interesting`,
+  `How did that happen?`
+];
 };
 
 const presenceFromRow = (
