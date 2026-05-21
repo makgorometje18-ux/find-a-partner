@@ -82,6 +82,7 @@ type MessageRow = {
   body: string;
   created_at: string;
   read_at: string | null;
+  deleted_for_everyone?: boolean;
 };
 
 type DatingBlockRow = {
