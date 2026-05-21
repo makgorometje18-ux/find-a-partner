@@ -5591,6 +5591,13 @@ function ChatPanel({
           shownMessages.map((message) => {
             const isOwnMessage = message.sender_id === activePlayerId;
             const { reply, text: messageBody } = decodeChatReply(message.body);
+            if (message.deleted_for_everyone) {
+            return (
+            <div className="italic opacity-70 text-sm">
+            This message was deleted
+            </div>
+            );
+            }
             const ownMessageReceipt = message.read_at ? "seen" : isOnline ? "delivered" : "sent";
             const messageWarning = safetySettings.scamWarnings && !isOwnMessage ? riskyMessageWarning(messageBody) : "";
             const messageActionOpen = openActionsFor === message.id;
@@ -5753,22 +5760,44 @@ function ChatPanel({
                           <span>📋</span>
                           <span>Copy</span>
                         </button>
-                        <button
-                          type="button"
+                       <button
+                        type="button"
                           onClick={() => {
-                            setChatDraft(`Forwarded: ${messageBody}`);
-                            closeMessageActions();
-                          }}
+                          setDeletedMessageIds((current) => [
+                          ...current,
+                           message.id
+                          ]);
+                           closeMessageActions();
+                           }}
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10"
-                        >
-                          <span>📤</span>
-                          <span>Forward</span>
-                        </button>
-                        <button type="button" onClick={() => closeMenuWithNotice("Pinned messages will be added to the social profile timeline soon.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10">
+                           >
+                          <span>🗑</span>
+                          <span>Delete for me</span>
+                          </button>
+
+                          <button
+                          type="button"
+                          onClick={async () => {
+                          await supabase
+                          .from("dating_messages")
+                          .update({
+                          deleted_for_everyone: true,
+                          body: "This message was deleted"
+                          })
+                          .eq("id", message.id);
+
+                          closeMessageActions();
+                         }}
+                         className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-red-400 hover:bg-red-500/10"
+                         >
+                          <span>🚫</span>
+                          <span>Delete for everyone</span>
+                         </button>                   
+                          <button type="button" onClick={() => closeMenuWithNotice("Pinned messages will be added to the social profile timeline soon.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10">
                           <span className="w-5 text-center">Pin</span>
                           <span>Pin</span>
-                        </button>
-                        <button type="button" onClick={() => closeMenuWithNotice("Ask AI will help summarize or suggest replies in a future upgrade.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10">
+                          </button>
+                          <button type="button" onClick={() => closeMenuWithNotice("Ask AI will help summarize or suggest replies in a future upgrade.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10">
                           <span className="w-5 text-center">AI</span>
                           <span>Ask AI</span>
                         </button>
