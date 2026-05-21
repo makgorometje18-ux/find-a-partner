@@ -5739,7 +5739,7 @@ function ChatPanel({
                           }}
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10"
                         >
-                          <span>’Ã†â€™Ãƒâ€ â„¢’Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€ â„¢’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€šÂ¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Å¡Ãƒâ€šÂ¬’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ ’Ã†â€™Ãƒâ€ â„¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ©</span>
+                          <span>↩</span>
                           <span>Reply</span>
                         </button>
                         <button
@@ -5750,7 +5750,7 @@ function ChatPanel({
                           }}
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10"
                         >
-                          <span>’Ã†â€™Ãƒâ€ â„¢’Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€ â„¢’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€šÂ¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Å¡Ãƒâ€šÂ¬’Ã†â€™Ãƒâ€šÂ¢’Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÂ¬’Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ’Ã†â€™Ãƒâ€ â„¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ¡</span>
+                          <span>📋</span>
                           <span>Copy</span>
                         </button>
                         <button
@@ -5761,7 +5761,7 @@ function ChatPanel({
                           }}
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10"
                         >
-                          <span>’Ã†â€™Ãƒâ€ â„¢’Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€ â„¢’Å¡Ãƒâ€šÂ¢’Ã†â€™Ãƒâ€šÂ¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Å¡Ãƒâ€šÂ¬’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ ’Ã†â€™Ãƒâ€ â„¢’Â¢ÃƒÂ¢Å¡Â¬Ãƒâ€¦Â¡’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡’Å¡Ãƒâ€šÂ·</span>
+                          <span>📤</span>
                           <span>Forward</span>
                         </button>
                         <button type="button" onClick={() => closeMenuWithNotice("Pinned messages will be added to the social profile timeline soon.")} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-white/10">
