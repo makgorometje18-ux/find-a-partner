@@ -1349,11 +1349,7 @@ export default function PartnerSetupPage() {
 
   return (
     <main
-      className={`${step === "profile" ? "min-h-screen overflow-x-hidden px-4 pb-24 pt-24 sm:px-5" : "flex h-[100dvh] overflow-hidden px-3 pb-3 pt-20 sm:px-5 sm:pb-5"} items-center justify-center transition-colors ${
-        isLightMode
-          ? "bg-[linear-gradient(180deg,#f8fbff_0%,#edf4ff_34%,#ffffff_100%)] text-slate-950"
-          : "bg-[linear-gradient(180deg,#ff5b7b_0%,#fd3974_22%,#17171b_22%,#0a0b10_100%)] text-white"
-      }`}
+      className={`${step === "profile" ? "min-h-screen overflow-x-hidden px-4 pb-24 pt-24 sm:px-5" : "flex h-[100dvh] overflow-hidden px-3 pb-3 pt-20 sm:px-5 sm:pb-5"} items-center justify-center bg-[linear-gradient(180deg,#ff5b7b_0%,#fd3974_22%,#17171b_22%,#0a0b10_100%)] text-white transition-colors`}
     >
       <button
         type="button"
@@ -1387,9 +1383,7 @@ export default function PartnerSetupPage() {
 
       <div className={`mx-auto w-full max-w-lg ${step === "profile" ? "" : "max-h-full"}`}>
         <div
-          className={`rounded-[2rem] p-4 shadow-2xl backdrop-blur sm:p-5 ${step === "profile" ? "" : "max-h-full overflow-hidden"} ${
-            isLightMode ? "border border-slate-200 bg-white/82 text-slate-950" : "border border-white/10 bg-black/25 text-white"
-          }`}
+          className={`rounded-[2rem] border border-white/10 bg-black/25 p-4 text-white shadow-2xl backdrop-blur sm:p-5 ${step === "profile" ? "" : "max-h-full overflow-hidden"}`}
         >
           {step === "welcome" ? (
             <>

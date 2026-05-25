@@ -2827,19 +2827,15 @@ export default function PartnerScenePage() {
         {error ? <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
         {activeTab === "swipe" ? (
-          <section className={`overflow-hidden rounded-[2.2rem] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.18)] backdrop-blur ${
-            isLightMode
-              ? "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(239,246,255,0.94)_100%)]"
-              : "border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)]"
-          }`}>
-            <div className={`rounded-[1.7rem] px-4 py-3 ${isLightMode ? "border border-slate-200 bg-white/80" : "border border-white/8 bg-white/[0.03]"}`}>
-              <p className={`text-[11px] uppercase tracking-[0.38em] ${isLightMode ? "text-slate-500" : "text-white/45"}`}>Discover</p>
+          <section className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur">
+            <div className="rounded-[1.7rem] border border-white/8 bg-white/[0.03] px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.38em] text-white/45">Discover</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className={`text-3xl font-black tracking-tight ${isLightMode ? "text-slate-950" : "text-white"}`}>Swipe</h2>
-                  <p className={`mt-1 text-sm ${isLightMode ? "text-slate-600" : "text-white/58"}`}>Find your next real connection.</p>
+                  <h2 className="text-3xl font-black tracking-tight text-white">Swipe</h2>
+                  <p className="mt-1 text-sm text-white/58">Find your next real connection.</p>
                 </div>
-                <div className={`rounded-full px-3 py-1.5 text-xs font-black ${isLightMode ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-emerald-300/30 bg-emerald-400/12 text-emerald-100"}`}>
+                <div className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-3 py-1.5 text-xs font-black text-emerald-100">
                   {visiblePartnerProfiles.length} active
                 </div>
               </div>
@@ -2942,7 +2938,7 @@ export default function PartnerScenePage() {
         ) : null}
 
         {activeTab === "chat" ? (
-          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white" : `rounded-[2rem] p-4 shadow-xl backdrop-blur ${isLightMode ? "border border-slate-200 bg-white/86 text-slate-950" : "border border-white/10 bg-black/35"}`}>
+          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white" : "rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur"}>
             {!activeMatch ? (
               <>
                 <p className="text-sm uppercase tracking-[0.3em] text-white/50">Inbox</p>
@@ -3038,7 +3034,7 @@ export default function PartnerScenePage() {
         ) : null}
 
         {activeTab === "profile" ? (
-          <section className={`rounded-[2rem] p-4 shadow-xl backdrop-blur ${isLightMode ? "border border-slate-200 bg-white/86 text-slate-950" : "border border-white/10 bg-black/35"}`}>
+          <section className="rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur">
             <div className="rounded-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.92),rgba(2,6,23,0.72))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
               <div className="flex items-center gap-3">
                 <GameLogo className="h-12 w-12" />
@@ -3102,11 +3098,7 @@ export default function PartnerScenePage() {
         />
       ) : null}
 
-      {!activeMatch && !hasExploreOverlay ? <nav className={`fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] px-4 py-3 text-xs shadow-[0_-18px_45px_rgba(0,0,0,0.18)] backdrop-blur ${
-        isLightMode
-          ? "border border-slate-200 bg-white/92 text-slate-600"
-          : "border border-white/10 bg-[#0b0d11]/96 text-white/65"
-      }`}>
+      {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#0b0d11]/96 px-4 py-3 text-xs text-white/65 shadow-[0_-18px_45px_rgba(0,0,0,0.45)] backdrop-blur">
         {[
           { id: "swipe", label: "Swipe", icon: <FlameTabIcon /> },
           { id: "explore", label: "Explore", icon: <CompassTabIcon /> },
@@ -3126,9 +3118,7 @@ export default function PartnerScenePage() {
                       : item.id === "profile"
                         ? "border-white/10 bg-[#181b20] text-white"
                         : "border-blue-300/20 bg-sky-500 text-white"
-                : isLightMode
-                  ? "border-slate-200 bg-slate-50 text-slate-700"
-                  : "border-white/10 bg-[#17191f] text-white/76"
+                : "border-white/10 bg-[#17191f] text-white/76"
             }`}>
               {item.icon}
               {item.id === "chat" && totalUnreadCount ? (
@@ -3137,7 +3127,7 @@ export default function PartnerScenePage() {
                 </span>
               ) : null}
             </span>
-            <span className={activeTab === item.id ? (isLightMode ? "text-slate-950" : "text-white") : (isLightMode ? "text-slate-500" : "text-white/52")}>{item.label}</span>
+            <span className={activeTab === item.id ? "text-white" : "text-white/52"}>{item.label}</span>
           </button>
         ))}
       </nav> : null}
