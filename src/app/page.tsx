@@ -268,6 +268,17 @@ const likeUsageKey = (userId: string) => `dating-like-usage:${userId}`;
 const userControlsKey = (userId: string) => `dating-user-controls:${userId}`;
 const dailyLikeLimit = 20;
 const composerEmojiPalette = ["😀", "😂", "😍", "🥰", "😘", "😉", "😊", "😎", "🔥", "❤️", "👍", "👏", "🙏", "🎉", "😢", "😡"];
+const expandedEmojiPalette = [
+  "😀", "😁", "😂", "🤣", "😊", "☺️", "😍", "🥰", "😘", "😗", "😙", "😚", "😉", "🙃", "🙂", "🥲", "😋", "😛", "😜", "🤪",
+  "😝", "🫠", "🤗", "🤭", "🫢", "🫣", "🤫", "🤔", "🫡", "🤐", "🤨", "😐", "😑", "😶", "🫥", "😶‍🌫️", "😏", "😒", "🙄", "😬",
+  "😮‍💨", "🤥", "😔", "😪", "🤤", "😴", "😌", "🥹", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨",
+  "😰", "😥", "😓", "🤩", "🥳", "😎", "🤓", "🧐", "😇", "🥺", "🤠", "😈", "👿", "💀", "☠️", "👻", "👽", "🤖", "💩", "👋",
+  "🤚", "🖐️", "✋", "🫱", "🫲", "🫶", "👐", "🙌", "👏", "🤝", "👍", "👎", "👊", "✊", "🤛", "🤜", "🫵", "🙏", "💪", "🫰",
+  "🤞", "✌️", "🤟", "🤘", "👌", "🤌", "🤏", "🖖", "☝️", "👇", "👈", "👉", "🫳", "🫴", "❤️", "🩷", "🧡", "💛", "💚", "💙",
+  "🩵", "💜", "🤎", "🖤", "🩶", "🤍", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "🔥", "✨", "⭐", "🌟", "💫",
+  "⚡", "🎉", "🎊", "🎈", "🎁", "🍾", "🥂", "🍻", "☕", "🍕", "🍔", "🍟", "🌮", "🍗", "🍓", "🍑", "🍒", "🥑", "🍫", "⚽",
+  "🏀", "🎾", "🎮", "🎵", "🎶", "🎤", "🎧", "📸", "📹", "📞", "💬", "💯", "✅", "❌", "⚠️", "🚀", "🌍", "🌹", "💍"
+];
 const getSpeechRecognitionConstructor = () =>
   typeof window === "undefined" ? null : window.SpeechRecognition || window.webkitSpeechRecognition || null;
 const defaultSafetySettings: PartnerSafetySettings = {
@@ -2782,7 +2793,7 @@ export default function PartnerScenePage() {
           ? "overflow-hidden bg-[#050b14] text-white lg:flex lg:items-center lg:justify-center lg:p-6"
           : `px-3 pb-24 pt-16 sm:px-4 sm:pb-32 sm:pt-24 ${
               isLightMode
-                ? "bg-[linear-gradient(180deg,#f8fbff_0%,#edf4ff_34%,#ffffff_100%)] text-slate-950"
+                ? "bg-[radial-gradient(circle_at_top,#ffffff_0%,#f5f9ff_28%,#e9f1ff_56%,#fdfefe_100%)] text-slate-950"
                 : "bg-[linear-gradient(180deg,#17181d_0%,#111318_28%,#090a0f_100%)] text-white"
             }`
       }`}
@@ -2816,15 +2827,19 @@ export default function PartnerScenePage() {
         {error ? <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
         {activeTab === "swipe" ? (
-          <section className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur">
-            <div className="rounded-[1.7rem] border border-white/8 bg-white/[0.03] px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.38em] text-white/45">Discover</p>
+          <section className={`overflow-hidden rounded-[2.2rem] p-3 shadow-[0_30px_90px_rgba(0,0,0,0.18)] backdrop-blur ${
+            isLightMode
+              ? "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(239,246,255,0.94)_100%)]"
+              : "border border-white/10 bg-[linear-gradient(180deg,#1b1e24_0%,#101216_16%,#090a0f_100%)]"
+          }`}>
+            <div className={`rounded-[1.7rem] px-4 py-3 ${isLightMode ? "border border-slate-200 bg-white/80" : "border border-white/8 bg-white/[0.03]"}`}>
+              <p className={`text-[11px] uppercase tracking-[0.38em] ${isLightMode ? "text-slate-500" : "text-white/45"}`}>Discover</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-3xl font-black tracking-tight text-white">Swipe</h2>
-                  <p className="mt-1 text-sm text-white/58">Find your next real connection.</p>
+                  <h2 className={`text-3xl font-black tracking-tight ${isLightMode ? "text-slate-950" : "text-white"}`}>Swipe</h2>
+                  <p className={`mt-1 text-sm ${isLightMode ? "text-slate-600" : "text-white/58"}`}>Find your next real connection.</p>
                 </div>
-                <div className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-3 py-1.5 text-xs font-black text-emerald-100">
+                <div className={`rounded-full px-3 py-1.5 text-xs font-black ${isLightMode ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-emerald-300/30 bg-emerald-400/12 text-emerald-100"}`}>
                   {visiblePartnerProfiles.length} active
                 </div>
               </div>
@@ -2927,7 +2942,7 @@ export default function PartnerScenePage() {
         ) : null}
 
         {activeTab === "chat" ? (
-          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white" : "rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur"}>
+          <section className={activeMatch ? "fixed inset-0 z-[90] h-dvh overflow-hidden bg-[#050b14] text-white" : `rounded-[2rem] p-4 shadow-xl backdrop-blur ${isLightMode ? "border border-slate-200 bg-white/86 text-slate-950" : "border border-white/10 bg-black/35"}`}>
             {!activeMatch ? (
               <>
                 <p className="text-sm uppercase tracking-[0.3em] text-white/50">Inbox</p>
@@ -3023,7 +3038,7 @@ export default function PartnerScenePage() {
         ) : null}
 
         {activeTab === "profile" ? (
-          <section className="rounded-[2rem] border border-white/10 bg-black/35 p-4 shadow-xl backdrop-blur">
+          <section className={`rounded-[2rem] p-4 shadow-xl backdrop-blur ${isLightMode ? "border border-slate-200 bg-white/86 text-slate-950" : "border border-white/10 bg-black/35"}`}>
             <div className="rounded-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.92),rgba(2,6,23,0.72))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
               <div className="flex items-center gap-3">
                 <GameLogo className="h-12 w-12" />
@@ -3087,7 +3102,11 @@ export default function PartnerScenePage() {
         />
       ) : null}
 
-      {!activeMatch && !hasExploreOverlay ? <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] border border-white/10 bg-[#0b0d11]/96 px-4 py-3 text-xs text-white/65 shadow-[0_-18px_45px_rgba(0,0,0,0.45)] backdrop-blur">
+      {!activeMatch && !hasExploreOverlay ? <nav className={`fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-w-md items-center justify-between rounded-t-[2rem] px-4 py-3 text-xs shadow-[0_-18px_45px_rgba(0,0,0,0.18)] backdrop-blur ${
+        isLightMode
+          ? "border border-slate-200 bg-white/92 text-slate-600"
+          : "border border-white/10 bg-[#0b0d11]/96 text-white/65"
+      }`}>
         {[
           { id: "swipe", label: "Swipe", icon: <FlameTabIcon /> },
           { id: "explore", label: "Explore", icon: <CompassTabIcon /> },
@@ -3107,7 +3126,9 @@ export default function PartnerScenePage() {
                       : item.id === "profile"
                         ? "border-white/10 bg-[#181b20] text-white"
                         : "border-blue-300/20 bg-sky-500 text-white"
-                : "border-white/10 bg-[#17191f] text-white/76"
+                : isLightMode
+                  ? "border-slate-200 bg-slate-50 text-slate-700"
+                  : "border-white/10 bg-[#17191f] text-white/76"
             }`}>
               {item.icon}
               {item.id === "chat" && totalUnreadCount ? (
@@ -3116,7 +3137,7 @@ export default function PartnerScenePage() {
                 </span>
               ) : null}
             </span>
-            <span className={activeTab === item.id ? "text-white" : "text-white/52"}>{item.label}</span>
+            <span className={activeTab === item.id ? (isLightMode ? "text-slate-950" : "text-white") : (isLightMode ? "text-slate-500" : "text-white/52")}>{item.label}</span>
           </button>
         ))}
       </nav> : null}
@@ -3465,20 +3486,20 @@ function SwipeCard({
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-3 px-4 py-4">
-          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-amber-400 shadow-xl">
+        <div className="grid grid-cols-5 gap-2 px-3 py-4 sm:gap-3 sm:px-4">
+          <button onClick={onPass} className="flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-amber-400 shadow-xl sm:h-16 sm:w-16">
             <RewindIcon />
           </button>
-          <button onClick={onPass} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-pink-500 shadow-xl">
+          <button onClick={onPass} className="flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-pink-500 shadow-xl sm:h-16 sm:w-16">
             <CloseIcon />
           </button>
-          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-400 shadow-xl disabled:opacity-60">
+          <button onClick={onSuperLike} disabled={saving} className="flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-400 shadow-xl disabled:opacity-60 sm:h-16 sm:w-16">
             <StarBadgeIcon />
           </button>
-          <button onClick={onLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#c7f464] text-emerald-950 shadow-xl disabled:opacity-60">
+          <button onClick={onLike} disabled={saving} className="flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-[#c7f464] text-emerald-950 shadow-xl disabled:opacity-60 sm:h-16 sm:w-16">
             <HeartSolidIcon />
           </button>
-          <button onClick={onSuperLike} disabled={saving} className="flex h-16 w-16 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-500 shadow-xl disabled:opacity-60">
+          <button onClick={onSuperLike} disabled={saving} className="flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-[#22252c] text-sky-500 shadow-xl disabled:opacity-60 sm:h-16 sm:w-16">
             <SendPlaneIcon />
           </button>
         </div>
@@ -5489,11 +5510,7 @@ function ChatPanel({
         </div>
 
         {showConversationMenu ? (
-          <div className="absolute right-3 top-16 z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#101827] py-2 text-sm font-medium text-white shadow-[0_22px_70px_rgba(0,0,0,0.5)]">
-            <button type="button" onClick={() => { setShowConversationMenu(false); onStartCall("voice"); }} disabled={communicationBlocked} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10 disabled:opacity-45">
-              <PhoneIcon className="h-4 w-4" />
-              <span>Call</span>
-            </button>
+          <div className="fixed right-2 top-[4.4rem] z-50 max-h-[calc(100dvh-5.2rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-[1.6rem] border border-white/10 bg-[#101827] py-2 text-sm font-medium text-white shadow-[0_22px_70px_rgba(0,0,0,0.5)]">
             <button type="button" onClick={() => closeMenuWithNotice(`${activeMatchProfile.display_name}, ${activeMatchProfile.age} - ${distanceLabel || activeMatchProfile.location_label || activeMatchProfile.city}. ${officialPartnerLabel(activeMatchProfile) || activeMatchProfile.relationship_goal || "Available to connect."}`)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10">
               <InfoCircleIcon />
               <span>Contact info</span>
@@ -5904,8 +5921,13 @@ function ChatPanel({
           </div>
         ) : null}
         {showEmojiPicker ? (
-          <div className="mb-3 grid grid-cols-8 gap-2 rounded-3xl border border-white/10 bg-[#101d31] p-3 shadow-xl">
-            {composerEmojiPalette.map((emoji) => (
+          <div className="mb-3 max-h-[min(18rem,38dvh)] overflow-y-auto overscroll-contain rounded-3xl border border-white/10 bg-[#101d31] p-3 shadow-xl">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-sky-200/70">Emojis</p>
+              <span className="text-[11px] text-white/45">{expandedEmojiPalette.length} options</span>
+            </div>
+            <div className="grid grid-cols-7 gap-2 sm:grid-cols-8">
+            {expandedEmojiPalette.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
@@ -5919,6 +5941,7 @@ function ChatPanel({
                 {emoji}
               </button>
             ))}
+            </div>
           </div>
         ) : null}
 
@@ -6089,17 +6112,17 @@ function ChatPanel({
                     <PlusIcon />
                   </button>
                   {showAttachMenu ? (
-                    <div className="absolute bottom-12 left-0 z-40 w-60 overflow-hidden rounded-2xl bg-white py-2 text-sm font-semibold text-slate-800 shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
-                      <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-indigo-500"><DocumentIcon className="h-5 w-5" /></span><span>Document</span></button>
-                      <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-blue-500"><PhotoIcon className="h-5 w-5" /></span><span>Photos and videos</span></button>
-                      <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-pink-500"><CameraIcon className="h-5 w-5" /></span><span>Camera</span></button>
-                      <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-orange-500"><MicIcon className="h-5 w-5" /></span><span>Audio</span></button>
-                      <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-sky-500"><ContactCardIcon className="h-5 w-5" /></span><span>Contact</span></button>
-                      <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-amber-500"><PollIcon className="h-5 w-5" /></span><span>Poll</span></button>
-                      <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-rose-500"><EventIcon className="h-5 w-5" /></span><span>Event</span></button>
-                      <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-lime-500"><PinIcon className="h-5 w-5" /></span><span>Location</span></button>
-                      <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-fuchsia-500"><EventIcon className="h-5 w-5" /></span><span>Date plan</span></button>
-                      <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-100"><span className="text-emerald-500"><SmileIcon className="h-5 w-5" /></span><span>New sticker</span></button>
+                    <div className="absolute bottom-12 right-0 z-40 max-h-[min(26rem,60dvh)] w-[min(18rem,calc(100vw-1.25rem))] overflow-y-auto overscroll-contain rounded-[1.45rem] border border-white/10 bg-[#101d31] py-2 text-sm font-semibold text-white shadow-[0_22px_70px_rgba(0,0,0,0.38)]">
+                      <button type="button" onClick={() => documentInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-indigo-300"><DocumentIcon className="h-5 w-5" /></span><span>Document</span></button>
+                      <button type="button" onClick={() => mediaInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-blue-300"><PhotoIcon className="h-5 w-5" /></span><span>Photos and videos</span></button>
+                      <button type="button" onClick={() => cameraInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-pink-300"><CameraIcon className="h-5 w-5" /></span><span>Camera</span></button>
+                      <button type="button" onClick={() => audioInputRef.current?.click()} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-orange-300"><MicIcon className="h-5 w-5" /></span><span>Audio</span></button>
+                      <button type="button" onClick={sendContactAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-sky-300"><ContactCardIcon className="h-5 w-5" /></span><span>Contact</span></button>
+                      <button type="button" onClick={sendPollAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-amber-300"><PollIcon className="h-5 w-5" /></span><span>Poll</span></button>
+                      <button type="button" onClick={sendEventAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-rose-300"><EventIcon className="h-5 w-5" /></span><span>Event</span></button>
+                      <button type="button" onClick={sendLocationAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-lime-300"><PinIcon className="h-5 w-5" /></span><span>Location</span></button>
+                      <button type="button" onClick={sendDatePlanAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-fuchsia-300"><EventIcon className="h-5 w-5" /></span><span>Date plan</span></button>
+                      <button type="button" onClick={sendStickerAttachment} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/10"><span className="text-emerald-300"><SmileIcon className="h-5 w-5" /></span><span>New sticker</span></button>
                     </div>
                   ) : null}
                   <input ref={documentInputRef} type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(event) => handleAttachmentInput(event, "document")} />
