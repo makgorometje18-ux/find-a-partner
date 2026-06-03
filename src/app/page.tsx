@@ -295,9 +295,9 @@ const defaultPartnerAppSettings: PartnerAppSettings = {
   globalMode: false,
   maxDistanceKm: 18,
   allowOutsideRange: true,
-  interestedIn: "Women",
+  interestedIn: "Everyone",
   ageMin: 18,
-  ageMax: 24,
+  ageMax: 80,
   minimumPhotos: 1,
   requireBio: false,
   recommendationMode: "balanced",
@@ -1459,36 +1459,37 @@ export default function PartnerScenePage() {
         return !controls.blocked && !controls.blockedBy;
       });
 
-      const compatibleProfiles = discoverableProfiles.filter((profile) => {
-        if (!matchesPreferredGender(profile, ownDatingProfile?.preferred_gender)) return false;
-        if (appSettings.interestedIn !== "Everyone" && profile.gender) {
-          const normalizedGender = profile.gender.toLowerCase();
-          if (!settingsGenderTargets[appSettings.interestedIn].some((value) => normalizedGender.includes(value))) return false;
-        }
-        return true;
+      const rankedProfiles = [...discoverableProfiles].sort((first, second) => {
+        const scoreProfile = (profile: DatingProfile) => {
+          let score = 0;
+          const photoCount = [profile.photo_url, ...(profile.gallery_urls || [])].filter(Boolean).length;
+          const distanceKm = distanceBetweenProfilesInKm(ownDatingProfile, profile);
+          const lounge = profile.intent_lounge || profile.relationship_goal || "Serious Relationship";
+
+          if (matchesPreferredGender(profile, ownDatingProfile?.preferred_gender)) score += 120;
+          if (appSettings.interestedIn === "Everyone") {
+            score += 60;
+          } else if (profile.gender) {
+            const normalizedGender = profile.gender.toLowerCase();
+            if (settingsGenderTargets[appSettings.interestedIn].some((value) => normalizedGender.includes(value))) score += 60;
+          }
+          if (profile.age >= appSettings.ageMin && profile.age <= appSettings.ageMax) score += 45;
+          if (photoCount >= appSettings.minimumPhotos) score += 30;
+          if (!appSettings.requireBio || profile.bio.trim()) score += 20;
+          if (kidsFilter === filterAny || profile.wants_kids === kidsFilter) score += 12;
+          if (smokesFilter === filterAny || profile.smokes === smokesFilter) score += 10;
+          if (drinksFilter === filterAny || profile.drinks === drinksFilter) score += 10;
+          if (!soberDatesOnly || profile.sober_dates) score += 10;
+          if (lounge === activeLounge) score += 18;
+          if (appSettings.globalMode || appSettings.allowOutsideRange || distanceKm === null || distanceKm <= appSettings.maxDistanceKm) score += 14;
+          if (distanceKm !== null) score += Math.max(0, 12 - Math.min(distanceKm, 120) / 10);
+          return score;
+        };
+
+        return scoreProfile(second) - scoreProfile(first);
       });
 
-      const preferenceProfiles = (compatibleProfiles.length ? compatibleProfiles : discoverableProfiles).filter((profile) => {
-        if (profile.age < appSettings.ageMin || profile.age > appSettings.ageMax) return false;
-        const photoCount = [profile.photo_url, ...(profile.gallery_urls || [])].filter(Boolean).length;
-        if (photoCount < appSettings.minimumPhotos) return false;
-        if (appSettings.requireBio && !profile.bio.trim()) return false;
-        if (kidsFilter !== filterAny && profile.wants_kids !== kidsFilter) return false;
-        if (smokesFilter !== filterAny && profile.smokes !== smokesFilter) return false;
-        if (drinksFilter !== filterAny && profile.drinks !== drinksFilter) return false;
-        if (soberDatesOnly && !profile.sober_dates) return false;
-        return true;
-      });
-
-      const distanceProfiles = (preferenceProfiles.length ? preferenceProfiles : compatibleProfiles.length ? compatibleProfiles : discoverableProfiles).filter((profile) => {
-        if (appSettings.globalMode || appSettings.allowOutsideRange) return true;
-        const distanceKm = distanceBetweenProfilesInKm(ownDatingProfile, profile);
-        return distanceKm === null || distanceKm <= appSettings.maxDistanceKm;
-      });
-
-      const loungeBase = distanceProfiles.length ? distanceProfiles : preferenceProfiles.length ? preferenceProfiles : compatibleProfiles.length ? compatibleProfiles : discoverableProfiles;
-      const loungeProfiles = loungeBase.filter((profile) => (profile.intent_lounge || profile.relationship_goal || "Serious Relationship") === activeLounge);
-      return loungeProfiles.length ? loungeProfiles : loungeBase;
+      return rankedProfiles;
     },
     [activeLounge, appSettings, drinksFilter, kidsFilter, ownDatingProfile, profiles, smokesFilter, soberDatesOnly, userControls]
   );
